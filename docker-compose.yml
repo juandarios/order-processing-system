@@ -1,0 +1,128 @@
+version: "3.9"
+
+services:
+  # ─── Infrastructure ─────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:29092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_MULTIPLE_DATABASES: order-intake-db,payment-db,orchestrator-db
+    volumes:
+      - ./docker/postgres-init.sh:/docker-entrypoint-initdb.d/init.sh
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── Mocks ──────────────────────────────────────────────────────────────────
+  stock-service:
+    build:
+      context: .
+      dockerfile: src/Mocks/StockService/Dockerfile
+    ports:
+      - "5010:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+
+  payment-gateway:
+    build:
+      context: .
+      dockerfile: src/Mocks/PaymentGateway/Dockerfile
+    ports:
+      - "5040:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+
+  # ─── Services ───────────────────────────────────────────────────────────────
+  order-producer:
+    build:
+      context: .
+      dockerfile: src/OrderProducer/Dockerfile
+    ports:
+      - "5000:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__OrderPlacedTopic: order-placed
+
+  order-intake:
+    build:
+      context: .
+      dockerfile: src/OrderIntake/OrderIntake.Api/Dockerfile
+    ports:
+      - "5001:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__OrderIntakeDb: "Host=postgres;Port=5432;Database=order-intake-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+      Kafka__BootstrapServers: kafka:29092
+      Kafka__GroupId: order-intake-group
+      Kafka__OrderPlacedTopic: order-placed
+      Services__StockService: http://stock-service:8080/
+      Services__Orchestrator: http://order-orchestrator:8080/
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: src/PaymentService/PaymentService.Api/Dockerfile
+    ports:
+      - "5020:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__PaymentDb: "Host=postgres;Port=5432;Database=payment-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+      Services__PaymentGateway: http://payment-gateway:8080/
+      Services__Orchestrator: http://order-orchestrator:8080/
+
+  order-orchestrator:
+    build:
+      context: .
+      dockerfile: src/OrderOrchestrator/OrderOrchestrator.Api/Dockerfile
+    ports:
+      - "5030:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__OrchestratorDb: "Host=postgres;Port=5432;Database=orchestrator-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+      Services__PaymentService: http://payment-service:8080/
+
+volumes:
+  pgdata:
