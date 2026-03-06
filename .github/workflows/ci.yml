@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  # ─── Unit Tests ─────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: OrderIntake unit tests
+        run: dotnet test tests/OrderIntake.UnitTests --no-build --configuration Release --logger "github-actions"
+
+      - name: PaymentService unit tests
+        run: dotnet test tests/PaymentService.UnitTests --no-build --configuration Release --logger "github-actions"
+
+      - name: OrderOrchestrator unit tests
+        run: dotnet test tests/OrderOrchestrator.UnitTests --no-build --configuration Release --logger "github-actions"
+
+  # ─── Integration Tests ──────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: OrderIntake integration tests
+        run: dotnet test tests/OrderIntake.IntegrationTests --no-build --configuration Release --logger "github-actions"
+
+      - name: PaymentService integration tests
+        run: dotnet test tests/PaymentService.IntegrationTests --no-build --configuration Release --logger "github-actions"
+
+      - name: OrderOrchestrator integration tests
+        run: dotnet test tests/OrderOrchestrator.IntegrationTests --no-build --configuration Release --logger "github-actions"
+
+  # ─── E2E Tests ──────────────────────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Start services
+        run: docker compose up -d --build --wait
+        timeout-minutes: 10
+
+      - name: Restore & build test project
+        run: dotnet build tests/E2E --configuration Release
+
+      - name: E2E tests
+        run: dotnet test tests/E2E --no-build --configuration Release --logger "github-actions"
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v
