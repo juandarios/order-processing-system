@@ -26,6 +26,12 @@ public class KafkaConsumer(
 {
     private const string SourceService = "order-intake";
 
+    /// <summary>
+    /// Number of HTTP retries Polly performs before giving up. Must match the value
+    /// configured in Program.cs (MaxRetryAttempts = 3).
+    /// </summary>
+    private const int PollyMaxRetryAttempts = 3;
+
     /// <inheritdoc />
     public async Task ConsumeAsync(CancellationToken ct)
     {
@@ -88,9 +94,21 @@ public class KafkaConsumer(
                     logger.ValidationErrorDetected("DomainValidation", domainEx.Message);
                     await SendToValidationErrorsAsync(result.Message.Value, "DomainValidation", domainEx.Message, ct);
                 }
+                catch (StockServiceUnavailableException ex)
+                {
+                    // Polly exhausted all HTTP retries against Stock Service
+                    logger.MessageRoutedToDlq("TransientError", ex.Message);
+                    await SendToDlqAsync(result.Message.Value, "TransientError", ex.Message, PollyMaxRetryAttempts, ct);
+                }
+                catch (OrchestratorUnavailableException ex)
+                {
+                    // Polly exhausted all HTTP retries against Order Orchestrator
+                    logger.MessageRoutedToDlq("TransientError", ex.Message);
+                    await SendToDlqAsync(result.Message.Value, "TransientError", ex.Message, PollyMaxRetryAttempts, ct);
+                }
                 catch (Exception handlerEx)
                 {
-                    // Transient / infrastructure error → DLQ
+                    // Unknown error, no retries were attempted at this level
                     logger.MessageRoutedToDlq("TransientError", handlerEx.Message);
                     await SendToDlqAsync(result.Message.Value, "TransientError", handlerEx.Message, 0, ct);
                 }
