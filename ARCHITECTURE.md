@@ -744,6 +744,7 @@ All services export traces, metrics, and logs via the **OpenTelemetry Protocol (
 - **Exporter configuration**: Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. The OpenTelemetry SDK reads this automatically. In Docker Compose: `http://aspire-dashboard:18889`.
 - **Service names**: `order-producer`, `order-intake`, `payment-service`, `order-orchestrator`, `stock-service`, `payment-gateway`.
 - **Docker Compose**: The `aspire-dashboard` service is included and listens on port `18888` (UI) and `4317`/`18889` (OTLP gRPC).
+- **Distributed tracing across Kafka**: Distributed tracing across Kafka is implemented manually using W3C Trace Context propagation via Kafka message headers. This enables end-to-end trace visibility from S0 to PaymentConfirmed in the Aspire dashboard. The `KafkaProducerService` in S0 injects the current trace context (`traceparent` / `tracestate`) into outgoing message headers. The `KafkaConsumer` in S1 extracts these headers and starts a child `Activity` before processing, linking the consumer span to the producer span.
 
 ---
 

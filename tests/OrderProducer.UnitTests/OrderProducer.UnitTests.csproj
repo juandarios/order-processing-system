@@ -10,7 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Confluent.Kafka" Version="2.13.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="FluentAssertions" Version="8.8.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
@@ -25,8 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\OrderIntake\OrderIntake.Domain\OrderIntake.Domain.csproj" />
-    <ProjectReference Include="..\..\src\OrderIntake\OrderIntake.Application\OrderIntake.Application.csproj" />
+    <ProjectReference Include="..\..\src\OrderProducer\OrderProducer.csproj" />
   </ItemGroup>
 
 </Project>

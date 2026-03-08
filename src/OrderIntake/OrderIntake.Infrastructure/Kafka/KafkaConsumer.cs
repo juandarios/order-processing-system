@@ -1,14 +1,19 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
 using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 using OrderIntake.Application.Commands.ProcessOrder;
 using OrderIntake.Application.Interfaces;
 using OrderIntake.Application.Logging;
 using OrderIntake.Application.Models;
 using OrderIntake.Domain.Exceptions;
+using OrderIntake.Infrastructure.Telemetry;
 using Shared.Events;
 using Shared.Serialization;
 
@@ -17,6 +22,8 @@ namespace OrderIntake.Infrastructure.Kafka;
 /// <summary>
 /// Kafka consumer that listens to the order-placed topic and dispatches
 /// <see cref="ProcessOrderCommand"/> for each received event.
+/// Extracts the OpenTelemetry trace context from each Kafka message header so that
+/// consumer spans are linked to the producer span created in Order Producer (S0).
 /// Failed messages are routed to the Dead Letter Queue (DLQ) via <see cref="IDlqPublisher"/>.
 /// </summary>
 public class KafkaConsumer(
@@ -56,6 +63,29 @@ public class KafkaConsumer(
             {
                 result = consumer.Consume(ct);
                 if (result?.Message?.Value is null) continue;
+
+                // Extract the W3C Trace Context from the Kafka message headers.
+                // This links the consumer span to the producer span created in S0,
+                // enabling end-to-end distributed tracing across the Kafka boundary.
+                var parentContext = Propagators.DefaultTextMapPropagator.Extract(
+                    default,
+                    result.Message.Headers,
+                    static (headers, key) =>
+                    {
+                        var header = headers.FirstOrDefault(h => h.Key == key);
+                        return header != null
+                            ? new[] { Encoding.UTF8.GetString(header.GetValueBytes()) }
+                            : Array.Empty<string>();
+                    });
+
+                Baggage.Current = parentContext.Baggage;
+
+                // Start a consumer span as a child of the producer span.
+                // This span encompasses the full message processing (deserialization + handler).
+                using var activity = KafkaActivitySource.Source.StartActivity(
+                    "order-placed consume",
+                    ActivityKind.Consumer,
+                    parentContext.ActivityContext);
 
                 OrderPlacedEvent? @event = null;
 

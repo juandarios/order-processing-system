@@ -11,6 +11,7 @@ using OrderIntake.Infrastructure.HttpClients;
 using OrderIntake.Infrastructure.Kafka;
 using OrderIntake.Infrastructure.Persistence;
 using OrderIntake.Infrastructure.Persistence.Repositories;
+using OrderIntake.Infrastructure.Telemetry;
 using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -103,6 +104,7 @@ builder.Services.AddScoped<IValidationErrorPublisher, KafkaValidationErrorPublis
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService("order-intake"))
     .WithTracing(t => t
+        .AddSource(KafkaActivitySource.ServiceName)
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddOtlpExporter())

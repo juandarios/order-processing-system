@@ -3,6 +3,7 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
 using OrderProducer.Kafka;
+using OrderProducer.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<KafkaProducerService>();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService("order-producer"))
     .WithTracing(t => t
+        .AddSource(KafkaActivitySource.ServiceName)
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
         .AddOtlpExporter())
