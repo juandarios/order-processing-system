@@ -431,6 +431,8 @@ public class Order
   - `NotFoundException` → 404 Not Found
   - Unhandled exceptions → 500 Internal Server Error
 - Never expose internal exception details in production responses.
+- Never capture scoped services or request CancellationTokens inside `Task.Run` or fire-and-forget operations. Always create an independent scope via `IServiceScopeFactory.CreateAsyncScope()` and resolve services from that scope. Only capture primitive values (Guid, string, decimal, int) from the outer scope.
+- Always use `CancellationToken.None` in background tasks that must complete independently of the originating HTTP request lifecycle.
 
 ### Validation
 - FluentValidation for all request DTOs.

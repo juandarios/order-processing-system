@@ -44,14 +44,14 @@ public static partial class PaymentLogMessages
     public static partial void PaymentPersistedAndAccepted(this ILogger logger, Guid paymentId, Guid orderId);
 
     /// <summary>Logs that the background gateway call has started.</summary>
-    [LoggerMessage(Level = LogLevel.Information, Message = "Background gateway call started for payment {PaymentId}.")]
-    public static partial void GatewayCallStartedInBackground(this ILogger logger, Guid paymentId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Background gateway call started for payment {PaymentId} order {OrderId}.")]
+    public static partial void GatewayCallStartedInBackground(this ILogger logger, Guid paymentId, Guid orderId);
 
     /// <summary>Logs that the background gateway call failed after all resilience retries.</summary>
-    [LoggerMessage(Level = LogLevel.Error, Message = "Background gateway call failed for payment {PaymentId}: {Reason}")]
-    public static partial void GatewayCallFailed(this ILogger logger, Guid paymentId, string reason);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Background gateway call failed for payment {PaymentId} order {OrderId}: {Reason}")]
+    public static partial void GatewayCallFailed(this ILogger logger, Guid paymentId, Guid orderId, string reason);
 
     /// <summary>Logs that the background gateway call succeeded (202 Accepted). The gateway will deliver the result via webhook.</summary>
-    [LoggerMessage(Level = LogLevel.Information, Message = "Background gateway call succeeded for payment {PaymentId}. Awaiting webhook callback.")]
-    public static partial void GatewayCallSucceeded(this ILogger logger, Guid paymentId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Background gateway call succeeded for payment {PaymentId} order {OrderId}. Awaiting webhook callback.")]
+    public static partial void GatewayCallSucceeded(this ILogger logger, Guid paymentId, Guid orderId);
 }

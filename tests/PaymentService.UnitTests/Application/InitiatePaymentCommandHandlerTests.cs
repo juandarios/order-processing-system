@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using PaymentService.Application.Commands.InitiatePayment;
 using PaymentService.Application.Interfaces;
 using PaymentService.Domain.Entities;
@@ -55,8 +56,10 @@ public class InitiatePaymentCommandHandlerTests
         var realProvider = services.BuildServiceProvider();
         _scopeFactory = realProvider.GetRequiredService<IServiceScopeFactory>();
 
+        // gatewayClient is no longer injected directly into the handler — it is resolved from
+        // the background DI scope (via _scopeFactory) to avoid capturing scoped services.
         _handler = new InitiatePaymentCommandHandler(
-            _paymentRepository, _gatewayClient, _scopeFactory, _logger);
+            _paymentRepository, _scopeFactory, _logger);
     }
 
     /// <summary>
@@ -164,5 +167,74 @@ public class InitiatePaymentCommandHandlerTests
         // Act + Assert: Handle must complete without throwing
         var act = async () => await _handler.Handle(command, CancellationToken.None);
         await act.Should().NotThrowAsync();
+    }
+
+    /// <summary>
+    /// Cancelling the request CancellationToken after Handle returns must not prevent the
+    /// background task from completing. The background gateway call uses CancellationToken.None
+    /// and is independent of the HTTP request lifecycle.
+    /// </summary>
+    [Fact]
+    public async Task InitiatePayment_WhenRequestCancelled_BackgroundTaskContinues()
+    {
+        // Arrange
+        var orderId = Guid.NewGuid();
+
+        _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+
+        var command = new InitiatePaymentCommand(orderId, 30.00m, "USD");
+        using var cts = new CancellationTokenSource();
+
+        // Act — call Handle then immediately cancel the request token
+        var result = await _handler.Handle(command, cts.Token);
+        cts.Cancel();
+
+        // Assert Phase 1 completed successfully: payment persisted and ID returned
+        result.Should().NotBeEmpty();
+        await _paymentRepository.Received(1).AddAsync(Arg.Any<Payment>(), Arg.Any<CancellationToken>());
+
+        // Allow background task to run despite the request token being cancelled
+        await Task.Delay(200);
+
+        // Assert Phase 2 still ran: gateway was called using CancellationToken.None
+        await _gatewayClient.Received(1).ChargeAsync(
+            Arg.Any<Guid>(), orderId, 30.00m, "USD", CancellationToken.None);
+    }
+
+    /// <summary>
+    /// When two sequential requests carry different orderId and amount values, each background
+    /// gateway call must use exactly the data from its own request — no data mixing between requests.
+    /// </summary>
+    [Fact]
+    public async Task InitiatePayment_MultipleSequentialRequests_EachUsesCorrectData()
+    {
+        // Arrange
+        var orderId1 = Guid.NewGuid();
+        var orderId2 = Guid.NewGuid();
+
+        _paymentRepository.GetByOrderIdAsync(orderId1, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+        _paymentRepository.GetByOrderIdAsync(orderId2, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+
+        var command1 = new InitiatePaymentCommand(orderId1, 111.11m, "USD");
+        var command2 = new InitiatePaymentCommand(orderId2, 222.22m, "EUR");
+
+        // Act — two sequential requests
+        var result1 = await _handler.Handle(command1, CancellationToken.None);
+        var result2 = await _handler.Handle(command2, CancellationToken.None);
+
+        // Allow both background tasks to complete
+        await Task.Delay(200);
+
+        // Assert — each gateway call received the correct orderId and amount
+        await _gatewayClient.Received(1).ChargeAsync(
+            Arg.Any<Guid>(), orderId1, 111.11m, "USD", Arg.Any<CancellationToken>());
+        await _gatewayClient.Received(1).ChargeAsync(
+            Arg.Any<Guid>(), orderId2, 222.22m, "EUR", Arg.Any<CancellationToken>());
+
+        // Each handler returned a distinct payment ID
+        result1.Should().NotBe(result2);
     }
 }

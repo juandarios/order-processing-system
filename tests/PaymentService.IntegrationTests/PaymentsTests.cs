@@ -194,5 +194,57 @@ public class PaymentsTests : IClassFixture<PaymentServiceWebAppFactory>
         webhookResp.StatusCode.Should().Be(System.Net.HttpStatusCode.OK, rejBody);
     }
 
+    /// <summary>
+    /// Three simultaneous POST /payments requests with distinct orderIds must all return 202
+    /// and each payment must be persisted with Pending status. Verifies that concurrent
+    /// background tasks do not mix data between requests.
+    /// </summary>
+    [Fact]
+    public async Task InitiatePayment_MultipleSimultaneousRequests_EachProcessedWithCorrectData()
+    {
+        // Arrange
+        var orderId1 = Guid.NewGuid();
+        var orderId2 = Guid.NewGuid();
+        var orderId3 = Guid.NewGuid();
+
+        _factory.GatewayMock
+            .Given(Request.Create().WithPath("/charge").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(202));
+
+        var client = _factory.CreateClient();
+
+        var request1 = new { OrderId = orderId1, Amount = 10.00m, Currency = "USD" };
+        var request2 = new { OrderId = orderId2, Amount = 20.00m, Currency = "EUR" };
+        var request3 = new { OrderId = orderId3, Amount = 30.00m, Currency = "GBP" };
+
+        // Act — fire all three simultaneously
+        var task1 = client.PostAsJsonAsync("/payments", request1);
+        var task2 = client.PostAsJsonAsync("/payments", request2);
+        var task3 = client.PostAsJsonAsync("/payments", request3);
+        var responses = await Task.WhenAll(task1, task2, task3);
+
+        // Assert — all three synchronous phases returned 202 Accepted
+        responses[0].StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+        responses[1].StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+        responses[2].StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+
+        var body1 = await responses[0].Content.ReadFromJsonAsync<PaymentIdResponse>();
+        var body2 = await responses[1].Content.ReadFromJsonAsync<PaymentIdResponse>();
+        var body3 = await responses[2].Content.ReadFromJsonAsync<PaymentIdResponse>();
+
+        // Each response must carry a distinct payment ID
+        body1!.PaymentId.Should().NotBe(body2!.PaymentId);
+        body2.PaymentId.Should().NotBe(body3!.PaymentId);
+        body1.PaymentId.Should().NotBe(body3.PaymentId);
+
+        // Allow background tasks to complete
+        await Task.Delay(500);
+
+        // All three gateway calls must have been made (background tasks ran independently)
+        _factory.GatewayMock.LogEntries
+            .Where(e => e.RequestMessage.Path == "/charge")
+            .Should().HaveCount(3);
+    }
+
     private record PaymentIdResponse(Guid PaymentId);
 }

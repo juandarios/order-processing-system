@@ -21,14 +21,15 @@ namespace PaymentService.Application.Commands.InitiatePayment;
 /// <para>
 /// <b>Phase 2 (background — S2's internal responsibility):</b>
 /// The gateway call is issued asynchronously using a dedicated DI scope so that the HTTP request
-/// scope is not held open. If the gateway call fails after Polly exhausts all retries, the payment
-/// is marked as <c>Expired</c> and S3 is notified of the failure — all without affecting the
-/// already-returned 202 response.
+/// scope is not held open. Only primitive values (Guid, decimal, string) are captured from the
+/// outer scope — never services, DbContext, HttpContext, or any CancellationToken from the request.
+/// If the gateway call fails after Polly exhausts all retries, the payment is marked as
+/// <c>Expired</c> and S3 is notified of the failure — all without affecting the already-returned
+/// 202 response.
 /// </para>
 /// </summary>
 public class InitiatePaymentCommandHandler(
     IPaymentRepository paymentRepository,
-    IPaymentGatewayClient gatewayClient,
     IServiceScopeFactory scopeFactory,
     ILogger<InitiatePaymentCommandHandler> logger)
     : IRequestHandler<InitiatePaymentCommand, Guid>
@@ -71,65 +72,97 @@ public class InitiatePaymentCommandHandler(
         logger.PaymentPersistedAndAccepted(resolvedId, request.OrderId);
 
         // --- Phase 2: Fire-and-forget gateway call (S2's internal responsibility) ---
-        // The gateway call runs in a background task with its own DI scope so the
-        // current HTTP request scope is not held open.
+        // Capture ONLY primitive values from the request scope.
+        // NEVER capture: services, DbContext, HttpContext, or any CancellationToken from the request.
+        // IServiceScopeFactory is a singleton — safe to capture from the constructor field.
         //
         // TODO: Replace fire-and-forget with Outbox Pattern to guarantee delivery.
+        var capturedPaymentId = resolvedId;
+        var capturedOrderId = request.OrderId;
+        var capturedAmount = request.Amount;
+        var capturedCurrency = request.Currency;
+
         _ = Task.Run(async () =>
         {
+            // Create a completely independent DI scope — never reuse the request scope.
             await using var scope = scopeFactory.CreateAsyncScope();
-            var backgroundGateway = scope.ServiceProvider.GetRequiredService<IPaymentGatewayClient>();
-            var backgroundRepository = scope.ServiceProvider.GetRequiredService<IPaymentRepository>();
-            var backgroundOrchestrator = scope.ServiceProvider.GetRequiredService<IOrchestratorClient>();
+            var gateway = scope.ServiceProvider.GetRequiredService<IPaymentGatewayClient>();
+            var repository = scope.ServiceProvider.GetRequiredService<IPaymentRepository>();
+            var orchestrator = scope.ServiceProvider.GetRequiredService<IOrchestratorClient>();
 
-            logger.GatewayCallStartedInBackground(resolvedId);
-
-            try
-            {
-                await backgroundGateway.ChargeAsync(
-                    resolvedId, request.OrderId, request.Amount, request.Currency,
-                    CancellationToken.None);
-
-                logger.GatewayCallSucceeded(resolvedId);
-                // Gateway accepted the request. The result will arrive via POST /payments/webhook.
-            }
-            catch (PaymentGatewayUnavailableException ex)
-            {
-                logger.GatewayCallFailed(resolvedId, ex.Message);
-
-                // Update payment to Expired and notify S3 so the saga can transition to Failed.
-                try
-                {
-                    var failedPayment = await backgroundRepository.GetByIdAsync(resolvedId, CancellationToken.None);
-                    if (failedPayment is not null && failedPayment.Status == Domain.Enums.PaymentStatus.Pending)
-                    {
-                        failedPayment.Expire();
-                        await backgroundRepository.UpdateAsync(failedPayment, CancellationToken.None);
-
-                        var notification = new PaymentProcessedNotification(
-                            OrderId: request.OrderId,
-                            PaymentId: resolvedId,
-                            Status: "expired",
-                            Reason: "gateway_unavailable",
-                            Amount: request.Amount,
-                            Currency: request.Currency,
-                            OccurredAt: DateTimeOffset.UtcNow);
-
-                        await backgroundOrchestrator.NotifyPaymentProcessedAsync(
-                            notification, CancellationToken.None);
-                    }
-                }
-                catch (Exception innerEx)
-                {
-                    // The orchestrator notification also failed. Log and give up.
-                    // TODO: Replace fire-and-forget with Outbox Pattern to guarantee delivery.
-                    logger.LogError(innerEx,
-                        "Failed to update payment or notify orchestrator after gateway failure for payment {PaymentId}",
-                        resolvedId);
-                }
-            }
-        }, CancellationToken.None); // CancellationToken.None: background work must not be tied to the HTTP request lifecycle.
+            // Use CancellationToken.None — background work must not be tied to the HTTP request lifecycle.
+            await ChargeGatewayAsync(
+                capturedPaymentId, capturedOrderId, capturedAmount, capturedCurrency,
+                gateway, repository, orchestrator, CancellationToken.None);
+        }, CancellationToken.None);
 
         return resolvedId;
+    }
+
+    /// <summary>
+    /// Calls the payment gateway and handles the result or failure entirely within its own
+    /// DI scope. All dependencies are passed as parameters — this method has no access to any
+    /// instance field other than the logger (which is a singleton-safe dependency).
+    /// </summary>
+    /// <param name="paymentId">The payment identifier to charge.</param>
+    /// <param name="orderId">The order identifier associated with this payment.</param>
+    /// <param name="amount">The amount to charge.</param>
+    /// <param name="currency">The ISO 4217 currency code.</param>
+    /// <param name="gateway">The gateway client resolved from the background scope.</param>
+    /// <param name="repository">The payment repository resolved from the background scope.</param>
+    /// <param name="orchestrator">The orchestrator client resolved from the background scope.</param>
+    /// <param name="ct">Cancellation token (must be <see cref="CancellationToken.None"/> for background tasks).</param>
+    private async Task ChargeGatewayAsync(
+        Guid paymentId,
+        Guid orderId,
+        decimal amount,
+        string currency,
+        IPaymentGatewayClient gateway,
+        IPaymentRepository repository,
+        IOrchestratorClient orchestrator,
+        CancellationToken ct)
+    {
+        logger.GatewayCallStartedInBackground(paymentId, orderId);
+
+        try
+        {
+            await gateway.ChargeAsync(paymentId, orderId, amount, currency, ct);
+            logger.GatewayCallSucceeded(paymentId, orderId);
+            // Gateway accepted the request. The result will arrive via POST /payments/webhook.
+        }
+        catch (PaymentGatewayUnavailableException ex)
+        {
+            logger.GatewayCallFailed(paymentId, orderId, ex.Message);
+
+            // Update payment to Expired and notify S3 so the saga can transition to Failed.
+            try
+            {
+                var failedPayment = await repository.GetByIdAsync(paymentId, ct);
+                if (failedPayment is not null && failedPayment.Status == Domain.Enums.PaymentStatus.Pending)
+                {
+                    failedPayment.Expire();
+                    await repository.UpdateAsync(failedPayment, ct);
+
+                    var notification = new PaymentProcessedNotification(
+                        OrderId: orderId,
+                        PaymentId: paymentId,
+                        Status: "expired",
+                        Reason: "gateway_unavailable",
+                        Amount: amount,
+                        Currency: currency,
+                        OccurredAt: DateTimeOffset.UtcNow);
+
+                    await orchestrator.NotifyPaymentProcessedAsync(notification, ct);
+                }
+            }
+            catch (Exception innerEx)
+            {
+                // The orchestrator notification also failed. Log and give up.
+                // TODO: Replace fire-and-forget with Outbox Pattern to guarantee delivery.
+                logger.LogError(innerEx,
+                    "Failed to update payment or notify orchestrator after gateway failure for payment {PaymentId} order {OrderId}",
+                    paymentId, orderId);
+            }
+        }
     }
 }

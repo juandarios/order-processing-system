@@ -45,6 +45,7 @@ Responsible for payment processing. Acts as an intermediary between the Orchestr
 - Exposes `POST /payments/webhook` to receive the gateway response
 - Notifies the Orchestrator via HTTP once the webhook is received; if orchestrator notification fails the gateway still receives 200 OK
 - **Design decision — separation of persistence from downstream calls**: S2 separates persistence (synchronous, responsibility towards S3) from gateway communication (asynchronous, S2's internal responsibility). S3 is responded to once the payment is persisted, regardless of downstream gateway availability. This is the same principle applied in S3: respond to the caller once the state is persisted, handle downstream failures internally.
+- **Design decision — independent DI scope for background tasks**: Background tasks in S2 always create an independent DI scope using `IServiceScopeFactory`. They never capture services, DbContext, or CancellationTokens from the originating HTTP request scope. Only primitive values (Guid, string, decimal) are captured from the outer scope. `CancellationToken.None` is used so background work completes independently of the HTTP request lifecycle.
 - **Future improvement**: Replace fire-and-forget with the Outbox Pattern to guarantee delivery when the gateway or orchestrator is unavailable for an extended period.
 
 ### S3 — Order Orchestrator
