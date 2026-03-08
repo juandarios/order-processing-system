@@ -213,6 +213,11 @@ public class PaymentsTests : IClassFixture<PaymentServiceWebAppFactory>
 
         var client = _factory.CreateClient();
 
+        // Snapshot the gateway call count before this test to handle LogEntries
+        // accumulated by other tests sharing the same IClassFixture WireMockServer.
+        var chargeCountBefore = _factory.GatewayMock.LogEntries
+            .Count(e => e.RequestMessage.Path == "/charge");
+
         var request1 = new { OrderId = orderId1, Amount = 10.00m, Currency = "USD" };
         var request2 = new { OrderId = orderId2, Amount = 20.00m, Currency = "EUR" };
         var request3 = new { OrderId = orderId3, Amount = 30.00m, Currency = "GBP" };
@@ -240,10 +245,12 @@ public class PaymentsTests : IClassFixture<PaymentServiceWebAppFactory>
         // Allow background tasks to complete
         await Task.Delay(500);
 
-        // All three gateway calls must have been made (background tasks ran independently)
-        _factory.GatewayMock.LogEntries
-            .Where(e => e.RequestMessage.Path == "/charge")
-            .Should().HaveCount(3);
+        // All three gateway calls must have been made (background tasks ran independently).
+        // Compare against the pre-test snapshot to isolate this test from others in the fixture.
+        var chargeCountAfter = _factory.GatewayMock.LogEntries
+            .Count(e => e.RequestMessage.Path == "/charge");
+        (chargeCountAfter - chargeCountBefore).Should().Be(3,
+            "each of the 3 simultaneous requests must trigger exactly one background gateway call");
     }
 
     private record PaymentIdResponse(Guid PaymentId);
