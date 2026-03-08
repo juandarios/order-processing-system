@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using OrderIntake.Application.Interfaces;
 using OrderIntake.Application.Logging;
 using OrderIntake.Domain.Entities;
+using OrderIntake.Domain.Exceptions;
 using OrderIntake.Domain.ValueObjects;
 using Shared.Contracts;
 using Shared.Events;
@@ -11,9 +12,10 @@ namespace OrderIntake.Application.Commands.ProcessOrder;
 
 /// <summary>
 /// Handles the <see cref="ProcessOrderCommand"/>:
-/// 1. Persists the order.
-/// 2. Validates stock for each line item.
-/// 3. Notifies the orchestrator with the result.
+/// 1. Guards against duplicate events (idempotency check by orderId).
+/// 2. Persists the order.
+/// 3. Validates stock for each line item.
+/// 4. Notifies the orchestrator with the result.
 /// </summary>
 public class ProcessOrderCommandHandler(
     IOrderRepository orderRepository,
@@ -24,12 +26,26 @@ public class ProcessOrderCommandHandler(
 {
     /// <summary>
     /// Processes the incoming order event.
+    /// Idempotent: if an order with the same <c>orderId</c> already exists, a
+    /// <see cref="DuplicateOrderException"/> is thrown so the Kafka consumer can route
+    /// the message to the DLQ with type <c>DuplicateOrder</c> and commit the offset.
     /// </summary>
     /// <param name="request">The command containing the event payload.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <exception cref="DuplicateOrderException">
+    /// Thrown when an order with the same identifier has already been processed.
+    /// </exception>
     public async ValueTask<Unit> Handle(ProcessOrderCommand request, CancellationToken ct)
     {
         var payload = request.Event.Payload;
+
+        // --- Idempotency check (application-level, first line of defence) ---
+        var existing = await orderRepository.GetByIdAsync(payload.OrderId, ct);
+        if (existing is not null)
+        {
+            logger.DuplicateOrderDetected(payload.OrderId);
+            throw new DuplicateOrderException(payload.OrderId);
+        }
 
         var order = Order.Create(
             id: payload.OrderId,

@@ -38,9 +38,12 @@ public class PaymentRepository(IOptions<DatabaseOptions> options) : IPaymentRepo
     public async Task AddAsync(Payment payment, CancellationToken ct = default)
     {
         using var conn = CreateConnection();
+        // ON CONFLICT DO NOTHING provides database-level idempotency as a second line of defence.
+        // If a payment already exists for order_id (unique constraint), the INSERT is silently skipped.
         await conn.ExecuteAsync("""
             INSERT INTO payments (id, order_id, status, amount, currency, rejection_reason, gateway_response, created_at, updated_at)
             VALUES (@Id, @OrderId, @Status, @Amount, @Currency, @RejectionReason, @GatewayResponse, @CreatedAt, @UpdatedAt)
+            ON CONFLICT (order_id) DO NOTHING
             """,
             new
             {

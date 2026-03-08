@@ -50,4 +50,8 @@ public static partial class OrderIntakeLogMessages
     /// <summary>Logs that a validation error event was successfully published.</summary>
     [LoggerMessage(Level = LogLevel.Information, Message = "Validation error event published. ErrorType={ErrorType}, Source={SourceService}")]
     public static partial void ValidationErrorPublished(this ILogger logger, string errorType, string sourceService);
+
+    /// <summary>Logs that a duplicate order was detected and the event will be routed to the DLQ.</summary>
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Duplicate order detected for OrderId={OrderId}. Event routed to DLQ with type DuplicateOrder.")]
+    public static partial void DuplicateOrderDetected(this ILogger logger, Guid orderId);
 }

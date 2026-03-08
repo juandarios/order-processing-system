@@ -30,4 +30,12 @@ public static partial class PaymentLogMessages
     /// <summary>Logs that the orchestrator was notified of the payment result.</summary>
     [LoggerMessage(Level = LogLevel.Information, Message = "Orchestrator notified for payment {PaymentId} order {OrderId} status {Status}")]
     public static partial void OrchestratorNotified(this ILogger logger, Guid paymentId, Guid orderId, string status);
+
+    /// <summary>Logs that a duplicate payment request was detected and the existing payment is returned.</summary>
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Duplicate payment request detected for OrderId={OrderId}. Returning existing payment.")]
+    public static partial void DuplicatePaymentDetected(this ILogger logger, Guid orderId);
+
+    /// <summary>Logs that a duplicate webhook notification was ignored because the payment is already in a terminal state.</summary>
+    [LoggerMessage(Level = LogLevel.Information, Message = "Duplicate webhook ignored for PaymentId={PaymentId}. Payment already in terminal state.")]
+    public static partial void DuplicateWebhookIgnored(this ILogger logger, Guid paymentId);
 }

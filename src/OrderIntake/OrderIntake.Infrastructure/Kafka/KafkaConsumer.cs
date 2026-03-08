@@ -88,6 +88,12 @@ public class KafkaConsumer(
                 {
                     await mediator.Send(new ProcessOrderCommand(@event), ct);
                 }
+                catch (DuplicateOrderException dupEx)
+                {
+                    // Duplicate order → DLQ with type DuplicateOrder, then commit offset
+                    logger.MessageRoutedToDlq("DuplicateOrder", dupEx.Message);
+                    await SendToDlqAsync(result.Message.Value, "DuplicateOrder", dupEx.Message, 0, ct);
+                }
                 catch (DomainException domainEx)
                 {
                     // Business validation error → validation error topic (not DLQ)

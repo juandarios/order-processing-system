@@ -89,4 +89,32 @@ public class ProcessWebhookCommandHandlerTests
         // Assert
         await act.Should().ThrowAsync<PaymentService.Domain.Exceptions.NotFoundException>();
     }
+
+    /// <summary>
+    /// When the payment is already in a terminal state (e.g. Approved), a duplicate webhook
+    /// notification must be ignored gracefully — no update is persisted and no error is thrown.
+    /// </summary>
+    [Fact]
+    public async Task ProcessWebhook_WithDuplicateNotification_IgnoresGracefully()
+    {
+        // Arrange — payment already approved (terminal state)
+        var orderId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+        var payment = Payment.Create(paymentId, orderId, 99.99m, "USD");
+        payment.Approve("approved");
+
+        _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
+            .Returns(payment);
+
+        var command = new ProcessWebhookCommand(orderId, paymentId, "approved", null, 99.99m, "USD");
+
+        // Act — no exception expected
+        var act = async () => await _handler.Handle(command, CancellationToken.None);
+
+        // Assert — no update persisted, no error
+        await act.Should().NotThrowAsync();
+        await _paymentRepository.DidNotReceive().UpdateAsync(Arg.Any<Payment>(), Arg.Any<CancellationToken>());
+        await _orchestratorClient.DidNotReceive()
+            .NotifyPaymentProcessedAsync(Arg.Any<PaymentProcessedNotification>(), Arg.Any<CancellationToken>());
+    }
 }
