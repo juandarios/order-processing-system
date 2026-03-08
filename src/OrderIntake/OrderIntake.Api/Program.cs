@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -10,6 +11,7 @@ using OrderIntake.Infrastructure.HttpClients;
 using OrderIntake.Infrastructure.Kafka;
 using OrderIntake.Infrastructure.Persistence;
 using OrderIntake.Infrastructure.Persistence.Repositories;
+using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,14 +39,55 @@ builder.Services.AddDbContext<OrderDbContext>(opts =>
 // Repository
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 
-// HTTP Clients
+// HTTP Clients with resilience policies
 builder.Services.AddHttpClient<IStockServiceClient, StockServiceClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Services:StockService"]!);
+})
+.AddResilienceHandler("stock-service", pipeline =>
+{
+    // Retry 3 times, exponential backoff (2s, 4s, 8s), on transient errors only
+    pipeline.AddRetry(new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        Delay = TimeSpan.FromSeconds(2),
+        BackoffType = DelayBackoffType.Exponential,
+        ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+            .Handle<HttpRequestException>()
+            .HandleResult(r => (int)r.StatusCode >= 500 && (int)r.StatusCode != 400 && (int)r.StatusCode != 409)
+    });
+    // Circuit breaker: open after 5 consecutive failures, half-open after 30s
+    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+    {
+        FailureRatio = 1.0,
+        MinimumThroughput = 5,
+        SamplingDuration = TimeSpan.FromSeconds(30),
+        BreakDuration = TimeSpan.FromSeconds(30)
+    });
 });
+
 builder.Services.AddHttpClient<IOrchestratorClient, OrchestratorClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Services:Orchestrator"]!);
+})
+.AddResilienceHandler("orchestrator", pipeline =>
+{
+    pipeline.AddRetry(new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        Delay = TimeSpan.FromSeconds(2),
+        BackoffType = DelayBackoffType.Exponential,
+        ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+            .Handle<HttpRequestException>()
+            .HandleResult(r => (int)r.StatusCode >= 500)
+    });
+    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+    {
+        FailureRatio = 1.0,
+        MinimumThroughput = 5,
+        SamplingDuration = TimeSpan.FromSeconds(30),
+        BreakDuration = TimeSpan.FromSeconds(30)
+    });
 });
 
 // Kafka consumer and DLQ

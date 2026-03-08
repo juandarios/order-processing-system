@@ -378,6 +378,7 @@ When `stockValidated` is `false`, at least one item has `stockAvailable: false`.
 | **Integration tests** | xUnit + WebApplicationFactory + Testcontainers | Real infrastructure in Docker |
 | **E2E tests** | xUnit + HttpClient | Against Docker Compose |
 | **HTTP mocks (tests)** | WireMock.NET | Simulates external HTTP services in integration tests |
+| **Resilience** | Polly (Microsoft.Extensions.Http.Resilience) | Retry with exponential backoff + circuit breaker on all outbound HTTP calls |
 | **Repository** | Mono-repo | Single repo, single .sln, single docker-compose.yml |
 
 ### Kafka — KRaft mode
@@ -661,6 +662,22 @@ builder.Build().Run();
 | **Requires .NET** | Yes | No |
 
 Both coexist: Aspire for development, Docker Compose for automated testing.
+
+### Resilience — Polly
+
+All outbound HTTP calls in S1, S2, and S3 are protected by Polly resilience pipelines via `Microsoft.Extensions.Http.Resilience`.
+
+- **Retry policy**: 3 attempts, exponential backoff (2s, 4s, 8s), on transient errors (5xx, `HttpRequestException`). Status codes that indicate a permanent client error (400, 409, 422) are excluded from retries.
+- **Circuit breaker**: opens after 5 consecutive failures within 30 seconds, stays open for 30 seconds before attempting half-open.
+- **TODO**: Implement the Outbox Pattern for messages that cannot be delivered after all retries are exhausted.
+
+| Service | HTTP Client | Non-retried statuses |
+|---|---|---|
+| S1 | StockServiceClient | 400, 409 |
+| S1 | OrchestratorClient | — |
+| S2 | PaymentGatewayClient | 400, 422 |
+| S2 | OrchestratorClient | — |
+| S3 | PaymentServiceClient | — |
 
 ### Observability — OpenTelemetry
 

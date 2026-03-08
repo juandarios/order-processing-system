@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -7,6 +8,7 @@ using PaymentService.Api.Middleware;
 using PaymentService.Application.Interfaces;
 using PaymentService.Infrastructure.HttpClients;
 using PaymentService.Infrastructure.Persistence;
+using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,14 +35,57 @@ builder.Services.Configure<DatabaseOptions>(opts =>
 builder.Services.AddSingleton<DatabaseInitializer>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
 
-// HTTP Clients
+// HTTP Clients with resilience policies
 builder.Services.AddHttpClient<IPaymentGatewayClient, PaymentGatewayClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Services:PaymentGateway"]!);
+})
+.AddResilienceHandler("payment-gateway", pipeline =>
+{
+    // Retry on transient errors; do NOT retry on 400, 422
+    pipeline.AddRetry(new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        Delay = TimeSpan.FromSeconds(2),
+        BackoffType = DelayBackoffType.Exponential,
+        ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+            .Handle<HttpRequestException>()
+            .HandleResult(r =>
+                (int)r.StatusCode >= 500 &&
+                (int)r.StatusCode != 400 &&
+                (int)r.StatusCode != 422)
+    });
+    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+    {
+        FailureRatio = 1.0,
+        MinimumThroughput = 5,
+        SamplingDuration = TimeSpan.FromSeconds(30),
+        BreakDuration = TimeSpan.FromSeconds(30)
+    });
 });
+
 builder.Services.AddHttpClient<IOrchestratorClient, OrchestratorClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Services:Orchestrator"]!);
+})
+.AddResilienceHandler("orchestrator", pipeline =>
+{
+    pipeline.AddRetry(new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        Delay = TimeSpan.FromSeconds(2),
+        BackoffType = DelayBackoffType.Exponential,
+        ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+            .Handle<HttpRequestException>()
+            .HandleResult(r => (int)r.StatusCode >= 500)
+    });
+    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+    {
+        FailureRatio = 1.0,
+        MinimumThroughput = 5,
+        SamplingDuration = TimeSpan.FromSeconds(30),
+        BreakDuration = TimeSpan.FromSeconds(30)
+    });
 });
 
 // OpenTelemetry — traces, metrics, logs exported via OTLP

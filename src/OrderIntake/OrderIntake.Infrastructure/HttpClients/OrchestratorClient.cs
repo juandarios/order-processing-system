@@ -7,6 +7,8 @@ using Shared.Serialization;
 
 namespace OrderIntake.Infrastructure.HttpClients;
 
+// TODO: Implement Outbox Pattern for prolonged unavailability
+
 /// <summary>
 /// HTTP client adapter for the Order Orchestrator (S3).
 /// Implements <see cref="IOrchestratorClient"/>.

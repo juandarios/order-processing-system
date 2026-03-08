@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -8,6 +9,7 @@ using OrderOrchestrator.Application.Interfaces;
 using OrderOrchestrator.Infrastructure.BackgroundJobs;
 using OrderOrchestrator.Infrastructure.HttpClients;
 using OrderOrchestrator.Infrastructure.Persistence;
+using Polly;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,10 +36,29 @@ builder.Services.Configure<OrchestratorDatabaseOptions>(opts =>
 builder.Services.AddSingleton<DatabaseInitializer>();
 builder.Services.AddScoped<IOrderSagaRepository, OrderSagaRepository>();
 
-// HTTP Clients
+// HTTP Clients with resilience policies
 builder.Services.AddHttpClient<IPaymentServiceClient, PaymentServiceClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Services:PaymentService"]!);
+})
+.AddResilienceHandler("payment-service", pipeline =>
+{
+    pipeline.AddRetry(new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        Delay = TimeSpan.FromSeconds(2),
+        BackoffType = DelayBackoffType.Exponential,
+        ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+            .Handle<HttpRequestException>()
+            .HandleResult(r => (int)r.StatusCode >= 500)
+    });
+    pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+    {
+        FailureRatio = 1.0,
+        MinimumThroughput = 5,
+        SamplingDuration = TimeSpan.FromSeconds(30),
+        BreakDuration = TimeSpan.FromSeconds(30)
+    });
 });
 
 // Background jobs

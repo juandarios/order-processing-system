@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging;
 
 namespace OrderIntake.Infrastructure.HttpClients;
 
+// TODO: Implement Outbox Pattern for prolonged unavailability
+
 /// <summary>
 /// HTTP client adapter for the Stock Service Mock (Mock 1).
 /// Implements <see cref="IStockServiceClient"/>.

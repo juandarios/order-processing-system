@@ -19,6 +19,8 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
         {
             DomainException => (StatusCodes.Status400BadRequest, "Domain rule violation"),
             NotFoundException => (StatusCodes.Status404NotFound, "Resource not found"),
+            PaymentGatewayUnavailableException => (StatusCodes.Status503ServiceUnavailable, "Payment gateway unavailable"),
+            OrchestratorUnavailableException => (StatusCodes.Status503ServiceUnavailable, "Orchestrator unavailable"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred")
         };
 

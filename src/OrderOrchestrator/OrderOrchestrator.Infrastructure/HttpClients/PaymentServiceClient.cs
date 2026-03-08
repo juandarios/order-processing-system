@@ -5,6 +5,8 @@ using OrderOrchestrator.Application.Interfaces;
 
 namespace OrderOrchestrator.Infrastructure.HttpClients;
 
+// TODO: Implement Outbox Pattern for prolonged unavailability
+
 /// <summary>
 /// HTTP client adapter for the Payment Service (S2).
 /// Implements <see cref="IPaymentServiceClient"/>.
