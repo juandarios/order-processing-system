@@ -184,6 +184,7 @@ stateDiagram-v2
 ## 5. Domain Events and HTTP Contracts
 
 ### Design decisions
+- **Idempotent S3 handlers**: All S3 notification handlers are idempotent. The `POST /orchestrator/orders/stock-validated` handler checks whether a saga already exists for the given `orderId` before creating a new one. If it does, the existing saga is reused and the state machine is only advanced if the saga is still in the `Pending` state. The `POST /orchestrator/orders/payment-processed` handler ignores duplicate notifications gracefully when the saga is not in `PaymentPending` state. Database-level idempotency is enforced with `INSERT ... ON CONFLICT (order_id) DO NOTHING` as a second line of defence against race conditions.
 - **Fat Events**: events carry all necessary information. Consumers do not need to query the source.
 - **Format**: plain JSON, no Schema Registry.
 - **Common envelope**: all Kafka events share the same base structure.

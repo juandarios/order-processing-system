@@ -29,11 +29,14 @@ public class OrderSagaRepository(IOptions<OrchestratorDatabaseOptions> options) 
     public async Task AddAsync(OrderSaga saga, CancellationToken ct = default)
     {
         using var conn = CreateConnection();
+        // ON CONFLICT DO NOTHING provides database-level idempotency as a second line of defence.
+        // If a saga already exists for order_id (unique constraint), the INSERT is silently skipped.
         await conn.ExecuteAsync("""
             INSERT INTO order_sagas (id, order_id, current_state, total_amount, currency,
                                      payment_id, payment_initiated_at, timeout_at, created_at, updated_at)
             VALUES (@Id, @OrderId, @CurrentState, @TotalAmount, @Currency,
                     @PaymentId, @PaymentInitiatedAt, @TimeoutAt, @CreatedAt, @UpdatedAt)
+            ON CONFLICT (order_id) DO NOTHING
             """,
             new
             {

@@ -30,4 +30,16 @@ public static partial class OrchestratorLogMessages
     /// <summary>Logs timeout processing.</summary>
     [LoggerMessage(Level = LogLevel.Warning, Message = "Timeout detected for order {OrderId}, failing saga")]
     public static partial void SagaTimedOut(this ILogger logger, Guid orderId);
+
+    /// <summary>Logs detection of a duplicate saga for an order that already has a saga in progress.</summary>
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Duplicate saga detected for order {OrderId}. Using existing saga.")]
+    public static partial void DuplicateSagaDetected(this ILogger logger, Guid orderId);
+
+    /// <summary>Logs that a duplicate payment processed notification was ignored gracefully.</summary>
+    [LoggerMessage(Level = LogLevel.Information, Message = "Duplicate payment notification ignored for order {OrderId}. Saga is already in a terminal or processed state.")]
+    public static partial void DuplicateNotificationIgnored(this ILogger logger, Guid orderId);
+
+    /// <summary>Logs that the payment service is unavailable after all retries.</summary>
+    [LoggerMessage(Level = LogLevel.Error, Message = "Payment service unavailable for order {OrderId}. Saga remains in StockValidated state. Reason: {Reason}")]
+    public static partial void PaymentInitiationFailed(this ILogger logger, Guid orderId, string reason);
 }
