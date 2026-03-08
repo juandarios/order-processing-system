@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   pgadmin:
@@ -84,17 +82,17 @@ services:
     depends_on:
       - aspire-dashboard
 
-  payment-gateway:
-    build:
-      context: .
-      dockerfile: src/Mocks/PaymentGateway/Dockerfile
-    ports:
-      - "5040:8080"
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
-    depends_on:
-      - aspire-dashboard
+  # payment-gateway:
+  #   build:
+  #     context: .
+  #     dockerfile: src/Mocks/PaymentGateway/Dockerfile
+  #   ports:
+  #     - "5040:8080"
+  #   environment:
+  #     ASPNETCORE_ENVIRONMENT: Production
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  #   depends_on:
+  #     - aspire-dashboard
 
   # ─── Services ───────────────────────────────────────────────────────────────
   order-producer:
@@ -139,40 +137,40 @@ services:
       Services__Orchestrator: http://order-orchestrator:8080/
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
-  # payment-service:
-  #   build:
-  #     context: .
-  #     dockerfile: src/PaymentService/PaymentService.Api/Dockerfile
-  #   ports:
-  #     - "5020:8080"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     aspire-dashboard:
-  #       condition: service_started
-  #   environment:
-  #     ASPNETCORE_ENVIRONMENT: Production
-  #     ConnectionStrings__PaymentDb: "Host=postgres;Port=5432;Database=payment-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
-  #     Services__PaymentGateway: http://payment-gateway:8080/
-  #     Services__Orchestrator: http://order-orchestrator:8080/
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  payment-service:
+    build:
+      context: .
+      dockerfile: src/PaymentService/PaymentService.Api/Dockerfile
+    ports:
+      - "5020:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      aspire-dashboard:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__PaymentDb: "Host=postgres;Port=5432;Database=payment-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+      Services__PaymentGateway: http://payment-gateway:8080/
+      Services__Orchestrator: http://order-orchestrator:8080/
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
-  # order-orchestrator:
-  #   build:
-  #     context: .
-  #     dockerfile: src/OrderOrchestrator/OrderOrchestrator.Api/Dockerfile
-  #   ports:
-  #     - "5030:8080"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     aspire-dashboard:
-  #       condition: service_started
-  #   environment:
-  #     ASPNETCORE_ENVIRONMENT: Production
-  #     ConnectionStrings__OrchestratorDb: "Host=postgres;Port=5432;Database=orchestrator-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
-  #     Services__PaymentService: http://payment-service:8080/
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  order-orchestrator:
+    build:
+      context: .
+      dockerfile: src/OrderOrchestrator/OrderOrchestrator.Api/Dockerfile
+    ports:
+      - "5030:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      aspire-dashboard:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__OrchestratorDb: "Host=postgres;Port=5432;Database=orchestrator-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+      Services__PaymentService: http://payment-service:8080/
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
 volumes:
   pgdata:
