@@ -2,6 +2,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
+using PaymentGateway.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +13,11 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Payment Gateway Mock", Version = "v1" });
 });
+
+// Register payment gateway options — WebhookUrl is read from configuration so it can be
+// overridden via the PaymentGateway__WebhookUrl environment variable in Docker Compose.
+builder.Services.Configure<PaymentGatewayOptions>(
+    builder.Configuration.GetSection("PaymentGateway"));
 
 // OpenTelemetry — traces, metrics, logs exported via OTLP
 // OTLP endpoint is configured via OTEL_EXPORTER_OTLP_ENDPOINT environment variable.

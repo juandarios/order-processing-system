@@ -696,6 +696,21 @@ builder.Build().Run();
 
 Both coexist: Aspire for development, Docker Compose for automated testing.
 
+### Inter-service URLs
+
+All inter-service URLs are configured via environment variables in docker-compose.yml. No service URL is hardcoded in application code. Each service reads its downstream URLs using the Options pattern from `appsettings.json` (local dev defaults) with docker-compose environment variable overrides for production/CI:
+
+| Service | Downstream URL env var | docker-compose value |
+|---|---|---|
+| Order Intake → Stock Service | `Services__StockService` | `http://stock-service:8080/` |
+| Order Intake → Orchestrator | `Services__Orchestrator` | `http://order-orchestrator:8080/` |
+| Payment Service → Payment Gateway | `Services__PaymentGateway` | `http://payment-gateway:8080/` |
+| Payment Service → Orchestrator | `Services__Orchestrator` | `http://order-orchestrator:8080/` |
+| Order Orchestrator → Payment Service | `Services__PaymentService` | `http://payment-service:8080/` |
+| Payment Gateway Mock → Payment Service webhook | `PaymentGateway__WebhookUrl` | `http://payment-service:8080/payments/webhook` |
+
+---
+
 ### Resilience — Polly
 
 All outbound HTTP calls in S1, S2, and S3 are protected by Polly resilience pipelines via `Microsoft.Extensions.Http.Resilience`.

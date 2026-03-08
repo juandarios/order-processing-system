@@ -82,17 +82,18 @@ services:
     depends_on:
       - aspire-dashboard
 
-  # payment-gateway:
-  #   build:
-  #     context: .
-  #     dockerfile: src/Mocks/PaymentGateway/Dockerfile
-  #   ports:
-  #     - "5040:8080"
-  #   environment:
-  #     ASPNETCORE_ENVIRONMENT: Production
-  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
-  #   depends_on:
-  #     - aspire-dashboard
+  payment-gateway:
+    build:
+      context: .
+      dockerfile: src/Mocks/PaymentGateway/Dockerfile
+    ports:
+      - "5040:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      PaymentGateway__WebhookUrl: http://payment-service:8080/payments/webhook
+    depends_on:
+      - aspire-dashboard
 
   # ─── Services ───────────────────────────────────────────────────────────────
   order-producer:

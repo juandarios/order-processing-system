@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using PaymentGateway.Options;
 using UUIDNext;
 
 namespace PaymentGateway.Controllers;
@@ -6,19 +8,33 @@ namespace PaymentGateway.Controllers;
 /// <summary>
 /// Simulates an external async payment gateway.
 /// Accepts charges and fires a webhook callback after a configurable delay.
+/// The webhook target URL is read from <see cref="PaymentGatewayOptions"/> and can be
+/// overridden at runtime via <see cref="ConfigController"/> for test scenarios.
 /// </summary>
 [ApiController]
 [Route("")]
-public class ChargeController(ILogger<ChargeController> logger, IHttpClientFactory httpClientFactory) : ControllerBase
+public class ChargeController(
+    ILogger<ChargeController> logger,
+    IHttpClientFactory httpClientFactory,
+    IOptions<PaymentGatewayOptions> options) : ControllerBase
 {
     private static PaymentGatewayConfig _config = new(202, 1000, "approved", null);
-    private static string? _paymentServiceWebhookUrl;
+
+    /// <summary>
+    /// Override URL set at runtime by the test-configuration endpoint.
+    /// When <c>null</c> the URL from <see cref="PaymentGatewayOptions"/> is used.
+    /// </summary>
+    private static string? _runtimeWebhookUrl;
 
     /// <summary>Sets the current gateway configuration.</summary>
     internal static void SetConfig(PaymentGatewayConfig config) => _config = config;
 
-    /// <summary>Sets the webhook callback URL for the payment service.</summary>
-    internal static void SetWebhookUrl(string url) => _paymentServiceWebhookUrl = url;
+    /// <summary>
+    /// Overrides the webhook callback URL at runtime (used by integration tests via
+    /// <see cref="ConfigController"/>). Pass <c>null</c> to revert to the configured default.
+    /// </summary>
+    /// <param name="url">The override URL, or <c>null</c> to clear the override.</param>
+    internal static void SetWebhookUrl(string? url) => _runtimeWebhookUrl = url;
 
     /// <summary>
     /// Accepts a payment charge request and schedules an asynchronous webhook callback.
@@ -48,7 +64,10 @@ public class ChargeController(ILogger<ChargeController> logger, IHttpClientFacto
         }
 
         var paymentId = Uuid.NewSequential();
-        var webhookUrl = _paymentServiceWebhookUrl ?? $"{Request.Scheme}://{Request.Host}/payments/webhook";
+
+        // Resolve webhook URL: runtime override (set by tests) takes precedence over the
+        // value from configuration (PaymentGatewayOptions.WebhookUrl).
+        var webhookUrl = _runtimeWebhookUrl ?? options.Value.WebhookUrl;
 
         _ = Task.Run(async () =>
         {
