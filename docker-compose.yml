@@ -1,5 +1,58 @@
+# =============================================================================
+# Order Processing System — Docker Compose
+# =============================================================================
+#
+# Orchestrates all services for local development and E2E test execution.
+#
+# INFRASTRUCTURE:
+#   - kafka          -> Message broker (KRaft mode, no Zookeeper)
+#   - postgres       -> PostgreSQL (one database per service)
+#
+# MAIN SERVICES:
+#   - order-producer      (S0) -> REST API + Kafka Producer       :5000
+#   - order-intake        (S1) -> Kafka Consumer + EF Core        :5001
+#   - payment-service     (S2) -> REST API + Dapper               :5020
+#   - order-orchestrator  (S3) -> REST API + State Machine        :5030
+#
+# MOCKS:
+#   - stock-service       -> Simulates stock validation            :5010
+#   - payment-gateway     -> Simulates async payment gateway       :5040
+#
+# OBSERVABILITY:
+#   - aspire-dashboard    -> OpenTelemetry dashboard (traces, logs, metrics) :18888
+#   - kafka-ui            -> Kafka topic/message explorer                    :8080
+#   - pgadmin             -> PostgreSQL database explorer                    :5050
+#
+# USAGE:
+#   Start all:             docker compose up -d --build
+#   Infrastructure only:   docker compose up -d kafka postgres
+#   Follow logs:           docker compose logs -f <service>
+#   Stop all:              docker compose down
+#   Stop and remove data:  docker compose down -v
+# =============================================================================
+
 services:
 
+  # ---------------------------------------------------------------------------
+  # pgAdmin — PostgreSQL database explorer
+  # ---------------------------------------------------------------------------
+  # Web interface for querying and exploring the system databases.
+  #
+  # Databases available:
+  #   - order-intake-db   -> tables: orders, order_lines
+  #   - payment-db        -> tables: payments
+  #   - orchestrator-db   -> tables: order_sagas
+  #
+  # URL:      http://localhost:5050
+  # Email:    admin@admin.com
+  # Password: admin
+  #
+  # To connect to PostgreSQL from pgAdmin:
+  #   Host:     postgres  (service name, NOT localhost)
+  #   Port:     5432
+  #   Username: postgres
+  #   Password: ${DB_PASSWORD:-postgres}
+  # ---------------------------------------------------------------------------
   pgadmin:
     image: dpage/pgadmin4:latest
     ports:
@@ -10,6 +63,18 @@ services:
     depends_on:
       - postgres
 
+  # ---------------------------------------------------------------------------
+  # Kafka UI — Topic and message explorer
+  # ---------------------------------------------------------------------------
+  # Web interface for exploring the Kafka cluster state.
+  #
+  # Useful for:
+  #   - Browsing topics and their messages (debug events)
+  #   - Monitoring consumer group offsets and lag
+  #   - Publishing test messages manually
+  #
+  # URL: http://localhost:8080
+  # ---------------------------------------------------------------------------
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
@@ -20,7 +85,20 @@ services:
     depends_on:
       - kafka
 
-  # ─── Observability ──────────────────────────────────────────────────────────
+  # ---------------------------------------------------------------------------
+  # Aspire Dashboard — OpenTelemetry observability
+  # ---------------------------------------------------------------------------
+  # Standalone dashboard for visualizing telemetry from all services.
+  # Receives data via OTLP protocol from each service.
+  #
+  # Shows:
+  #   - Distributed traces: end-to-end flow of an order across services
+  #   - Structured logs: centralized logs with trace correlation
+  #   - Metrics: latency, throughput, error rates per service
+  #
+  # Dashboard URL: http://localhost:18888
+  # OTLP endpoint: localhost:4317 (gRPC, used by services to export telemetry)
+  # ---------------------------------------------------------------------------
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
     ports:
@@ -29,7 +107,23 @@ services:
     environment:
       DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
 
-  # ─── Infrastructure ─────────────────────────────────────────────────────────
+  # ---------------------------------------------------------------------------
+  # Kafka — Message broker (KRaft mode, no Zookeeper)
+  # ---------------------------------------------------------------------------
+  # KRaft replaces Zookeeper since Kafka 3.3. The broker manages its own
+  # coordination internally without external dependencies.
+  #
+  # Topics auto-created on first use:
+  #   - order-placed              -> S0 produces, S1 consumes
+  #   - order-placed-dlq          -> messages that failed processing in S1
+  #   - order-validation-errors   -> orders with invalid business data
+  #
+  # Listeners:
+  #   - PLAINTEXT://kafka:29092       -> internal Docker network (used by services)
+  #   - PLAINTEXT_HOST://0.0.0.0:9092 -> host machine (mapped to localhost:9092)
+  #
+  # Port (host): 9092
+  # ---------------------------------------------------------------------------
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     ports:
@@ -52,6 +146,21 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Relational database
+  # ---------------------------------------------------------------------------
+  # Single instance with three independent databases, one per service
+  # (DB-per-service pattern):
+  #   - order-intake-db   -> orders and order lines (EF Core + migrations)
+  #   - payment-db        -> payments (Dapper, schema initialized on startup)
+  #   - orchestrator-db   -> order sagas (Dapper, schema initialized on startup)
+  #
+  # Initialization: docker/postgres-init.sh creates the databases on first run.
+  # Runs only once; to re-initialize, remove the pgdata volume.
+  #
+  # Port (host): 5432
+  # Credentials: postgres / ${DB_PASSWORD:-postgres}
+  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     ports:
@@ -69,7 +178,19 @@ services:
       timeout: 3s
       retries: 10
 
-  # ─── Mocks ──────────────────────────────────────────────────────────────────
+  # ---------------------------------------------------------------------------
+  # Mock — Stock Service
+  # ---------------------------------------------------------------------------
+  # Simulates an external stock validation service with configurable responses.
+  #
+  # Configure via: POST /config/stock
+  #   { "response": 200 }   -> stock available
+  #   { "response": 409 }   -> out of stock
+  #   { "response": 400 }   -> invalid parameters
+  #   { "response": 500 }   -> internal error
+  #
+  # Port (host): 5010
+  # ---------------------------------------------------------------------------
   stock-service:
     build:
       context: .
@@ -82,6 +203,23 @@ services:
     depends_on:
       - aspire-dashboard
 
+  # ---------------------------------------------------------------------------
+  # Mock — Payment Gateway
+  # ---------------------------------------------------------------------------
+  # Simulates an async payment gateway: accepts the charge request, responds
+  # immediately, and sends the result via webhook after a configurable delay.
+  #
+  # Configure via: POST /config/payment-gateway
+  #   {
+  #     "immediateResponse": 202,    // 202 | 400 | 422 | 500
+  #     "webhookDelayMs": 1000,      // delay before sending webhook (ms)
+  #     "webhookResult": "approved", // approved | rejected | expired
+  #     "webhookReason": null        // rejection reason (when rejected)
+  #   }
+  #
+  # Webhook target: PaymentService POST /payments/webhook (configured via env var)
+  # Port (host): 5040
+  # ---------------------------------------------------------------------------
   payment-gateway:
     build:
       context: .
@@ -95,7 +233,20 @@ services:
     depends_on:
       - aspire-dashboard
 
-  # ─── Services ───────────────────────────────────────────────────────────────
+  # ---------------------------------------------------------------------------
+  # S0 — Order Producer
+  # ---------------------------------------------------------------------------
+  # Manual entry point. Exposes a REST API that receives an order payload from
+  # Postman and publishes it as an OrderPlaced event to the Kafka topic.
+  # Injects OpenTelemetry trace context into each Kafka message header so the
+  # distributed trace is visible end-to-end in the Aspire dashboard.
+  #
+  # Communication:
+  #   <- HTTP POST /orders  (from Postman or E2E tests)
+  #   -> Kafka topic: order-placed (produce)
+  #
+  # Port (host): 5000
+  # ---------------------------------------------------------------------------
   order-producer:
     build:
       context: .
@@ -113,6 +264,25 @@ services:
       Kafka__OrderPlacedTopic: order-placed
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
+  # ---------------------------------------------------------------------------
+  # S1 — Order Intake
+  # ---------------------------------------------------------------------------
+  # Consumes OrderPlaced events from Kafka, validates stock availability,
+  # and notifies the orchestrator with the validation result.
+  #
+  # Communication:
+  #   <- Kafka topic: order-placed (consume)
+  #   -> Stock Service:      GET /stock/availability
+  #   -> Order Orchestrator: POST /orchestrator/orders/stock-validated
+  #
+  # Error handling:
+  #   -> order-placed-dlq          (unrecoverable technical errors, after Polly retries)
+  #   -> order-validation-errors   (invalid business data, no retry)
+  #
+  # ORM: Entity Framework Core (auto-migrates on startup)
+  # DB:  order-intake-db
+  # Port (host): 5001
+  # ---------------------------------------------------------------------------
   order-intake:
     build:
       context: .
@@ -138,6 +308,27 @@ services:
       Services__Orchestrator: http://order-orchestrator:8080/
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
+  # ---------------------------------------------------------------------------
+  # S2 — Payment Service
+  # ---------------------------------------------------------------------------
+  # Receives payment requests from the orchestrator, forwards them to the payment
+  # gateway asynchronously, and reports the result back via webhook.
+  #
+  # Communication:
+  #   <- HTTP POST /payments          (from Order Orchestrator)
+  #   <- HTTP POST /payments/webhook  (from Payment Gateway Mock, async callback)
+  #   -> Payment Gateway: POST /charge
+  #   -> Order Orchestrator: POST /orchestrator/orders/payment-processed
+  #
+  # Design: persists the payment synchronously (returns 202 to S3 immediately),
+  # then calls the gateway in a background task. This decouples S3 from gateway
+  # availability. If the gateway call fails after Polly retries, S3 is notified
+  # with the appropriate failure status (gateway_unavailable or gateway_timeout).
+  #
+  # ORM: Dapper
+  # DB:  payment-db
+  # Port (host): 5020
+  # ---------------------------------------------------------------------------
   payment-service:
     build:
       context: .
@@ -156,6 +347,27 @@ services:
       Services__Orchestrator: http://order-orchestrator:8080/
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
+  # ---------------------------------------------------------------------------
+  # S3 — Order Orchestrator
+  # ---------------------------------------------------------------------------
+  # Orchestrates the full order lifecycle using a Stateless state machine.
+  # Receives notifications from S1 (stock validated) and S2 (payment processed),
+  # persists each saga transition, and initiates payment when stock is confirmed.
+  # A background polling job detects payment timeouts every 30 seconds.
+  #
+  # Communication:
+  #   <- HTTP POST /orchestrator/orders/stock-validated   (from Order Intake)
+  #   <- HTTP POST /orchestrator/orders/payment-processed (from Payment Service)
+  #   -> Payment Service: POST /payments
+  #
+  # State machine states: Pending -> StockValidated -> PaymentPending -> PaymentConfirmed
+  #                       Pending -> Cancelled (out of stock)
+  #                       PaymentPending -> Failed (rejected, expired, or timeout)
+  #
+  # ORM: Dapper
+  # DB:  orchestrator-db
+  # Port (host): 5030
+  # ---------------------------------------------------------------------------
   order-orchestrator:
     build:
       context: .
