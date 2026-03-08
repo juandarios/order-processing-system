@@ -49,7 +49,7 @@ public class OrchestratorIdempotencyTests : IClassFixture<OrchestratorWebAppFact
         var response2 = await client.PostAsJsonAsync("/orchestrator/orders/stock-validated", notification);
 
         // Assert — both calls return success; no duplicate key error on the second call
-        response1.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        response2.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        response1.StatusCode.Should().Be(HttpStatusCode.OK);
+        response2.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

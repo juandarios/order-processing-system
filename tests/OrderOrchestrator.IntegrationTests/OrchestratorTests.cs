@@ -43,7 +43,7 @@ public class OrchestratorTests : IClassFixture<OrchestratorWebAppFactory>
         var response = await client.PostAsJsonAsync("/orchestrator/orders/stock-validated", notification);
 
         // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
 
         _factory.PaymentServiceMock.LogEntries.Should().Contain(e =>
             e.RequestMessage.Path == "/payments");
@@ -70,7 +70,7 @@ public class OrchestratorTests : IClassFixture<OrchestratorWebAppFactory>
         var response = await client.PostAsJsonAsync("/orchestrator/orders/stock-validated", notification);
 
         // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
 
         // Payment service should NOT have been called for this specific no-stock request
         var paymentCallsAfter = _factory.PaymentServiceMock.LogEntries
@@ -117,7 +117,7 @@ public class OrchestratorTests : IClassFixture<OrchestratorWebAppFactory>
             "/orchestrator/orders/payment-processed", paymentNotification);
 
         // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 
     [Fact]
@@ -159,6 +159,6 @@ public class OrchestratorTests : IClassFixture<OrchestratorWebAppFactory>
             "/orchestrator/orders/payment-processed", paymentNotification);
 
         // Assert
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Accepted);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 }
