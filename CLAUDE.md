@@ -284,7 +284,8 @@ POST /config/payment-gateway
 | Mediator | Mediator (MIT community fork by martinothamar — do NOT use MediatR) |
 | Validation | FluentValidation (Mediator pipeline behavior) |
 | Error handling | Global middleware + ProblemDetails (RFC 7807) |
-| Logging | .NET native logger (structured logging) |
+| Logging | .NET native logger + OpenTelemetry (OTLP export) |
+| Observability | OpenTelemetry.Extensions.Hosting + Instrumentation.AspNetCore + Instrumentation.Http + Exporter.OpenTelemetryProtocol |
 | IDs | UUID v7 via UUIDNext package |
 | Local orchestration | .NET Aspire (AppHost) |
 | Message broker | Apache Kafka in **KRaft mode** (no ZooKeeper) |
@@ -560,3 +561,4 @@ The `AppHost` project orchestrates all services for local development.
 6. **Always add Swagger attributes** to controller actions.
 7. **Never hardcode connection strings or passwords.** Use environment variables.
 8. **Always write tests** for new features: unit tests for domain logic, integration tests for infrastructure, E2E for full flows.
+9. **OpenTelemetry is mandatory in all services.** Add `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Instrumentation.Http`, and `OpenTelemetry.Exporter.OpenTelemetryProtocol` to each .Api/.csproj and Mock .csproj. Configure via `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable (automatically read by the SDK). Service names must be lowercase hyphenated (e.g. `"order-intake"`).

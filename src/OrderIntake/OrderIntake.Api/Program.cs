@@ -1,5 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 using OrderIntake.Api.Middleware;
 using OrderIntake.Application.Interfaces;
 using OrderIntake.Infrastructure.HttpClients;
@@ -47,6 +51,25 @@ builder.Services.AddHttpClient<IOrchestratorClient, OrchestratorClient>(client =
 builder.Services.Configure<KafkaConsumerOptions>(builder.Configuration.GetSection("Kafka"));
 builder.Services.AddKeyedSingleton<IEventConsumer, KafkaConsumer>("kafka");
 builder.Services.AddHostedService<KafkaConsumerHostedService>();
+
+// OpenTelemetry — traces, metrics, logs exported via OTLP
+// OTLP endpoint is configured via OTEL_EXPORTER_OTLP_ENDPOINT environment variable.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("order-intake"))
+    .WithTracing(t => t
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter())
+    .WithMetrics(m => m
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddOtlpExporter());
+
+builder.Logging.AddOpenTelemetry(o =>
+{
+    o.IncludeFormattedMessage = true;
+    o.AddOtlpExporter();
+});
 
 // Exception handling
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

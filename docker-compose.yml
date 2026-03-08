@@ -22,6 +22,15 @@ services:
     depends_on:
       - kafka
 
+  # ─── Observability ──────────────────────────────────────────────────────────
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    ports:
+      - "18888:18888"   # dashboard UI
+      - "4317:18889"    # OTLP gRPC endpoint
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+
   # ─── Infrastructure ─────────────────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -71,6 +80,9 @@ services:
       - "5010:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    depends_on:
+      - aspire-dashboard
 
   payment-gateway:
     build:
@@ -80,6 +92,9 @@ services:
       - "5040:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    depends_on:
+      - aspire-dashboard
 
   # ─── Services ───────────────────────────────────────────────────────────────
   order-producer:
@@ -91,10 +106,13 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      aspire-dashboard:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       Kafka__BootstrapServers: kafka:29092
       Kafka__OrderPlacedTopic: order-placed
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
   order-intake:
     build:
@@ -107,6 +125,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      aspire-dashboard:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__OrderIntakeDb: "Host=postgres;Port=5432;Database=order-intake-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
@@ -115,6 +135,7 @@ services:
       Kafka__OrderPlacedTopic: order-placed
       Services__StockService: http://stock-service:8080/
       Services__Orchestrator: http://order-orchestrator:8080/
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
   # payment-service:
   #   build:
@@ -125,11 +146,14 @@ services:
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
+  #     aspire-dashboard:
+  #       condition: service_started
   #   environment:
   #     ASPNETCORE_ENVIRONMENT: Production
   #     ConnectionStrings__PaymentDb: "Host=postgres;Port=5432;Database=payment-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
   #     Services__PaymentGateway: http://payment-gateway:8080/
   #     Services__Orchestrator: http://order-orchestrator:8080/
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
   # order-orchestrator:
   #   build:
@@ -140,10 +164,13 @@ services:
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
+  #     aspire-dashboard:
+  #       condition: service_started
   #   environment:
   #     ASPNETCORE_ENVIRONMENT: Production
   #     ConnectionStrings__OrchestratorDb: "Host=postgres;Port=5432;Database=orchestrator-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
   #     Services__PaymentService: http://payment-service:8080/
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
 
 volumes:
   pgdata:

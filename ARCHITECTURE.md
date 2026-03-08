@@ -361,7 +361,8 @@ When `stockValidated` is `false`, at least one item has `stockAvailable: false`.
 | **Mediator** | Mediator (MIT community fork, martinothamar) | Implements CQRS in .NET. MediatR requires a paid commercial license since v12.4.0; Mediator is the MIT-licensed community fork with a compatible API and source-generator-based implementation for better performance. |
 | **Validation** | FluentValidation | Expressive rules, testable in isolation, Mediator pipeline |
 | **Error handling** | Global middleware + ProblemDetails | RFC 7807 standard, clean controllers |
-| **Logging** | .NET native logger | Structured logging, Aspire integration, no extra dependencies |
+| **Logging** | .NET native logger + OpenTelemetry | Structured logging, OTLP export, Aspire dashboard integration |
+| **Observability** | OpenTelemetry (traces, metrics, logs) | OTLP exporter to Aspire Dashboard (or any OTLP-compatible backend). Instrumentation via `OpenTelemetry.Instrumentation.AspNetCore` and `OpenTelemetry.Instrumentation.Http`. |
 | **IDs** | UUID v7 (UUIDNext) | Chronologically ordered, optimized for PostgreSQL indexes |
 | **Local dev** | .NET Aspire | Dashboard, traces, logs, metrics for all services |
 | **Message broker** | Apache Kafka (KRaft mode) | No ZooKeeper needed — KRaft is Kafka's built-in consensus mechanism, activated via environment variables |
@@ -653,6 +654,16 @@ builder.Build().Run();
 | **Requires .NET** | Yes | No |
 
 Both coexist: Aspire for development, Docker Compose for automated testing.
+
+### Observability — OpenTelemetry
+
+All services export traces, metrics, and logs via the **OpenTelemetry Protocol (OTLP)** to the Aspire Dashboard (or any OTLP-compatible backend such as Jaeger, Grafana, or Seq).
+
+- **Signal types**: Traces (distributed request tracing), Metrics (throughput, latency), Logs (structured log lines with trace correlation).
+- **Instrumentation**: ASP.NET Core (`AddAspNetCoreInstrumentation`) and HttpClient (`AddHttpClientInstrumentation`) are auto-instrumented.
+- **Exporter configuration**: Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. The OpenTelemetry SDK reads this automatically. In Docker Compose: `http://aspire-dashboard:18889`.
+- **Service names**: `order-producer`, `order-intake`, `payment-service`, `order-orchestrator`, `stock-service`, `payment-gateway`.
+- **Docker Compose**: The `aspire-dashboard` service is included and listens on port `18888` (UI) and `4317`/`18889` (OTLP gRPC).
 
 ---
 
