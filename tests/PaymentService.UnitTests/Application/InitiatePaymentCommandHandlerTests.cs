@@ -1,32 +1,62 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using PaymentService.Application.Commands.InitiatePayment;
 using PaymentService.Application.Interfaces;
 using PaymentService.Domain.Entities;
+using PaymentService.Domain.Exceptions;
 using Xunit;
 
 namespace PaymentService.UnitTests.Application;
 
 /// <summary>
-/// Unit tests for <see cref="InitiatePaymentCommandHandler"/> focusing on idempotency behaviour.
+/// Unit tests for <see cref="InitiatePaymentCommandHandler"/> focusing on idempotency behaviour
+/// and the fire-and-forget gateway call introduced in the Phase 1 / Phase 2 refactor.
 /// </summary>
 public class InitiatePaymentCommandHandlerTests
 {
     private readonly IPaymentRepository _paymentRepository = Substitute.For<IPaymentRepository>();
     private readonly IPaymentGatewayClient _gatewayClient = Substitute.For<IPaymentGatewayClient>();
+    private readonly IOrchestratorClient _orchestratorClient = Substitute.For<IOrchestratorClient>();
     private readonly ILogger<InitiatePaymentCommandHandler> _logger =
         Substitute.For<ILogger<InitiatePaymentCommandHandler>>();
 
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly InitiatePaymentCommandHandler _handler;
 
     /// <summary>
     /// Initializes a new instance of <see cref="InitiatePaymentCommandHandlerTests"/>
     /// wiring up the handler with substituted dependencies.
+    /// The <see cref="IServiceScopeFactory"/> is configured to return the same substitutes
+    /// so that background-scope resolutions hit the same mocks.
     /// </summary>
     public InitiatePaymentCommandHandlerTests()
     {
-        _handler = new InitiatePaymentCommandHandler(_paymentRepository, _gatewayClient, _logger);
+        // Build a scope factory that resolves the same substitutes used in Phase 2.
+        var serviceProvider = Substitute.For<IServiceProvider>();
+        serviceProvider.GetService(typeof(IPaymentGatewayClient)).Returns(_gatewayClient);
+        serviceProvider.GetService(typeof(IPaymentRepository)).Returns(_paymentRepository);
+        serviceProvider.GetService(typeof(IOrchestratorClient)).Returns(_orchestratorClient);
+
+        var scope = Substitute.For<IServiceScope>();
+        scope.ServiceProvider.Returns(serviceProvider);
+
+        var asyncScope = Substitute.For<IAsyncDisposable>();
+
+        // IServiceScopeFactory.CreateAsyncScope() returns an AsyncServiceScope (a struct),
+        // so we cannot mock it directly with NSubstitute. Instead we inject a real
+        // ServiceCollection that resolves our substitutes by instance.
+        var services = new ServiceCollection();
+        services.AddSingleton(_paymentRepository);
+        services.AddSingleton(_gatewayClient);
+        services.AddSingleton(_orchestratorClient);
+
+        var realProvider = services.BuildServiceProvider();
+        _scopeFactory = realProvider.GetRequiredService<IServiceScopeFactory>();
+
+        _handler = new InitiatePaymentCommandHandler(
+            _paymentRepository, _gatewayClient, _scopeFactory, _logger);
     }
 
     /// <summary>
@@ -53,20 +83,20 @@ public class InitiatePaymentCommandHandlerTests
         result.Should().Be(existingPaymentId);
         await _paymentRepository.DidNotReceive().AddAsync(Arg.Any<Payment>(), Arg.Any<CancellationToken>());
         await _gatewayClient.DidNotReceive().ChargeAsync(
-            Arg.Any<Guid>(), Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
     /// When no payment exists for the order, the handler creates a new payment record
-    /// and calls the gateway.
+    /// and fires off the gateway call in background. The payment ID is returned immediately.
     /// </summary>
     [Fact]
-    public async Task InitiatePayment_WithNewOrderId_CreatesPaymentAndCallsGateway()
+    public async Task InitiatePayment_WithNewOrderId_CreatesPaymentAndReturnsId()
     {
         // Arrange
         var orderId = Guid.NewGuid();
 
-        // First call (idempotency check) returns null; second call (re-query after insert) also returns null.
+        // Both the idempotency check and the re-query after insert return null.
         _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
             .Returns((Payment?)null);
 
@@ -75,9 +105,64 @@ public class InitiatePaymentCommandHandlerTests
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        // Assert — new record inserted and gateway called
+        // Assert — new record inserted and a payment ID returned
         result.Should().NotBeEmpty();
         await _paymentRepository.Received(1).AddAsync(Arg.Any<Payment>(), Arg.Any<CancellationToken>());
-        await _gatewayClient.Received(1).ChargeAsync(orderId, 50.00m, "USD", Arg.Any<CancellationToken>());
+
+        // Allow background Task.Run to complete before asserting gateway call
+        await Task.Delay(100);
+        await _gatewayClient.Received(1).ChargeAsync(
+            Arg.Any<Guid>(), orderId, 50.00m, "USD", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// When the gateway is unavailable, the handler must still return a payment ID
+    /// (202 Accepted to S3) — the exception must NOT propagate from <see cref="InitiatePaymentCommandHandler.Handle"/>.
+    /// </summary>
+    [Fact]
+    public async Task InitiatePayment_WhenGatewayUnavailable_Returns202AndPersistsPayment()
+    {
+        // Arrange
+        var orderId = Guid.NewGuid();
+
+        _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+
+        _gatewayClient
+            .ChargeAsync(Arg.Any<Guid>(), orderId, Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new PaymentGatewayUnavailableException("Gateway down"));
+
+        var command = new InitiatePaymentCommand(orderId, 75.00m, "EUR");
+
+        // Act — must NOT throw; Phase 1 already returned before Phase 2 runs
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert Phase 1: payment persisted and ID returned
+        result.Should().NotBeEmpty();
+        await _paymentRepository.Received(1).AddAsync(Arg.Any<Payment>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Gateway unavailability must not propagate an exception from the Handle method.
+    /// S3 receives 202 Accepted regardless of downstream gateway availability.
+    /// </summary>
+    [Fact]
+    public async Task InitiatePayment_WhenGatewayUnavailable_DoesNotPropagateErrorToS3()
+    {
+        // Arrange
+        var orderId = Guid.NewGuid();
+
+        _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+
+        _gatewayClient
+            .ChargeAsync(Arg.Any<Guid>(), orderId, Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new PaymentGatewayUnavailableException("Circuit open"));
+
+        var command = new InitiatePaymentCommand(orderId, 100.00m, "USD");
+
+        // Act + Assert: Handle must complete without throwing
+        var act = async () => await _handler.Handle(command, CancellationToken.None);
+        await act.Should().NotThrowAsync();
     }
 }

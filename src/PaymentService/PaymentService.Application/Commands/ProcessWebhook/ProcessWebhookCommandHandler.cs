@@ -60,6 +60,8 @@ public class ProcessWebhookCommandHandler(
                 throw new Domain.Exceptions.DomainException($"Unknown payment status: {request.Status}");
         }
 
+        // Persist the updated payment status BEFORE notifying S3.
+        // S2 must respond 200 OK to the gateway regardless of downstream orchestrator availability.
         await paymentRepository.UpdateAsync(payment, ct);
 
         var notification = new PaymentProcessedNotification(
@@ -71,8 +73,24 @@ public class ProcessWebhookCommandHandler(
             Currency: request.Currency,
             OccurredAt: DateTimeOffset.UtcNow);
 
-        await orchestratorClient.NotifyPaymentProcessedAsync(notification, ct);
-        logger.OrchestratorNotified(payment.Id, request.OrderId, request.Status);
+        // Polly resilience on orchestratorClient handles retries internally.
+        // If all retries are exhausted the exception is caught here so that the
+        // gateway always receives 200 OK — the webhook callback must never fail
+        // due to orchestrator unavailability.
+        // TODO: Replace fire-and-forget with Outbox Pattern to guarantee delivery.
+        try
+        {
+            await orchestratorClient.NotifyPaymentProcessedAsync(notification, ct);
+            logger.OrchestratorNotified(payment.Id, request.OrderId, request.Status);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Failed to notify orchestrator for payment {PaymentId} order {OrderId}. " +
+                "Payment status was updated successfully. Orchestrator notification will be retried on next webhook delivery.",
+                payment.Id, request.OrderId);
+            // Do not re-throw: the gateway already received its result; S2's job is done.
+        }
 
         return Unit.Value;
     }

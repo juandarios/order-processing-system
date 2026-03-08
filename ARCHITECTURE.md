@@ -39,10 +39,13 @@ Responsible for payment processing. Acts as an intermediary between the Orchestr
 
 - Exposes `POST /payments` to receive requests from the Orchestrator
 - Receives `orderId`, `totalAmount` and `currency` from the Orchestrator
-- Persists the payment request in PostgreSQL using **Dapper**
-- Calls the Payment Gateway Mock asynchronously
+- **Persists the payment in `Pending` status and responds 202 Accepted to S3 immediately** (Phase 1 — synchronous)
+- **Calls the Payment Gateway in background** using a dedicated DI scope and fire-and-forget (Phase 2 — asynchronous, S2's internal responsibility). S3 is never blocked on gateway availability.
+- If the gateway call fails after Polly exhausts all retries: marks the payment as `Expired`, then notifies S3 via `POST /orchestrator/orders/payment-processed` with `status = expired`
 - Exposes `POST /payments/webhook` to receive the gateway response
-- Notifies the Orchestrator via HTTP once the response is received
+- Notifies the Orchestrator via HTTP once the webhook is received; if orchestrator notification fails the gateway still receives 200 OK
+- **Design decision — separation of persistence from downstream calls**: S2 separates persistence (synchronous, responsibility towards S3) from gateway communication (asynchronous, S2's internal responsibility). S3 is responded to once the payment is persisted, regardless of downstream gateway availability. This is the same principle applied in S3: respond to the caller once the state is persisted, handle downstream failures internally.
+- **Future improvement**: Replace fire-and-forget with the Outbox Pattern to guarantee delivery when the gateway or orchestrator is unavailable for an extended period.
 
 ### S3 — Order Orchestrator
 The brain of the system. Orchestrates the full order lifecycle using a state machine.
@@ -139,9 +142,10 @@ flowchart TD
 
     subgraph S2[S2 - Payment Service]
         PAYAPI[POST /payments]
-        PAYAPI --> DB2[Save payment]
+        PAYAPI --> DB2[Save payment - Pending]
         DB2 --> PG2
-        DB2 --> CHARGE[Call gateway]
+        DB2 --> RESP202[Return 202 to S3]
+        RESP202 --> CHARGE[Call gateway in background]
         WEBHOOK[POST /payments/webhook]
     end
 

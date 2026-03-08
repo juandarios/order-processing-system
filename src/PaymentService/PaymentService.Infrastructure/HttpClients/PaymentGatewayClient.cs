@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using PaymentService.Application.Interfaces;
+using PaymentService.Domain.Exceptions;
 
 namespace PaymentService.Infrastructure.HttpClients;
 
@@ -15,15 +16,26 @@ public class PaymentGatewayClient(
     ILogger<PaymentGatewayClient> logger) : IPaymentGatewayClient
 {
     /// <inheritdoc />
-    public async Task<bool> ChargeAsync(Guid orderId, decimal amount, string currency, CancellationToken ct = default)
+    public async Task<bool> ChargeAsync(Guid paymentId, Guid orderId, decimal amount, string currency, CancellationToken ct = default)
     {
-        var payload = new { orderId, amount, currency };
-        var response = await httpClient.PostAsJsonAsync("charge", payload, ct);
+        try
+        {
+            var payload = new { orderId, amount, currency };
+            var response = await httpClient.PostAsJsonAsync("charge", payload, ct);
 
-        logger.LogInformation(
-            "Gateway charge for order {OrderId} → {StatusCode}",
-            orderId, (int)response.StatusCode);
+            logger.LogInformation(
+                "Gateway charge for payment {PaymentId} order {OrderId} → {StatusCode}",
+                paymentId, orderId, (int)response.StatusCode);
 
-        return response.StatusCode == System.Net.HttpStatusCode.Accepted;
+            return response.StatusCode == System.Net.HttpStatusCode.Accepted;
+        }
+        catch (Exception ex) when (ex is not PaymentGatewayUnavailableException)
+        {
+            // Polly resilience has already exhausted all retries at this point.
+            // Wrap any remaining failure (HttpRequestException, circuit breaker open, timeout)
+            // in a typed exception so the caller can handle it without catching Exception broadly.
+            throw new PaymentGatewayUnavailableException(
+                $"Payment gateway unavailable for payment {paymentId}: {ex.Message}", ex);
+        }
     }
 }

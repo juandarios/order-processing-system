@@ -35,6 +35,10 @@ public class PaymentsIdempotencyTests : IClassFixture<PaymentServiceWebAppFactor
         // Arrange
         var orderId = Guid.NewGuid();
 
+        // Reset log entries so that gateway calls from other tests in this fixture
+        // do not affect the Count assertion below.
+        _factory.GatewayMock.ResetLogEntries();
+
         _factory.GatewayMock
             .Given(Request.Create().WithPath("/charge").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(202));
@@ -59,6 +63,11 @@ public class PaymentsIdempotencyTests : IClassFixture<PaymentServiceWebAppFactor
         firstBody!.PaymentId.Should().NotBeEmpty();
         secondBody!.PaymentId.Should().Be(firstBody.PaymentId,
             "both responses must reference the same payment record");
+
+        // Allow background gateway call to complete before asserting the gateway log.
+        // The gateway call runs in a fire-and-forget Task.Run (Phase 2); a short delay
+        // ensures the background task has had time to execute before we inspect mock logs.
+        await Task.Delay(500);
 
         // Assert — gateway was called only once (no duplicate charge)
         _factory.GatewayMock.LogEntries
