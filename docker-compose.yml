@@ -1,6 +1,27 @@
 version: "3.9"
 
 services:
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - postgres
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      - kafka
+
   # ─── Infrastructure ─────────────────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -95,34 +116,34 @@ services:
       Services__StockService: http://stock-service:8080/
       Services__Orchestrator: http://order-orchestrator:8080/
 
-  payment-service:
-    build:
-      context: .
-      dockerfile: src/PaymentService/PaymentService.Api/Dockerfile
-    ports:
-      - "5020:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__PaymentDb: "Host=postgres;Port=5432;Database=payment-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
-      Services__PaymentGateway: http://payment-gateway:8080/
-      Services__Orchestrator: http://order-orchestrator:8080/
+  # payment-service:
+  #   build:
+  #     context: .
+  #     dockerfile: src/PaymentService/PaymentService.Api/Dockerfile
+  #   ports:
+  #     - "5020:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     ASPNETCORE_ENVIRONMENT: Production
+  #     ConnectionStrings__PaymentDb: "Host=postgres;Port=5432;Database=payment-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+  #     Services__PaymentGateway: http://payment-gateway:8080/
+  #     Services__Orchestrator: http://order-orchestrator:8080/
 
-  order-orchestrator:
-    build:
-      context: .
-      dockerfile: src/OrderOrchestrator/OrderOrchestrator.Api/Dockerfile
-    ports:
-      - "5030:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__OrchestratorDb: "Host=postgres;Port=5432;Database=orchestrator-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
-      Services__PaymentService: http://payment-service:8080/
+  # order-orchestrator:
+  #   build:
+  #     context: .
+  #     dockerfile: src/OrderOrchestrator/OrderOrchestrator.Api/Dockerfile
+  #   ports:
+  #     - "5030:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     ASPNETCORE_ENVIRONMENT: Production
+  #     ConnectionStrings__OrchestratorDb: "Host=postgres;Port=5432;Database=orchestrator-db;Username=postgres;Password=${DB_PASSWORD:-postgres}"
+  #     Services__PaymentService: http://payment-service:8080/
 
 volumes:
   pgdata:

@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using OrderOrchestrator.Application.Interfaces;
 using OrderOrchestrator.Application.Logging;
@@ -14,12 +14,12 @@ namespace OrderOrchestrator.Application.Commands.ProcessPaymentProcessed;
 public class ProcessPaymentProcessedCommandHandler(
     IOrderSagaRepository sagaRepository,
     ILogger<ProcessPaymentProcessedCommandHandler> logger)
-    : IRequestHandler<ProcessPaymentProcessedCommand>
+    : ICommandHandler<ProcessPaymentProcessedCommand>
 {
     /// <summary>
     /// Processes the payment result and drives the saga to terminal state.
     /// </summary>
-    public async Task Handle(ProcessPaymentProcessedCommand request, CancellationToken ct)
+    public async ValueTask<Unit> Handle(ProcessPaymentProcessedCommand request, CancellationToken ct)
     {
         var notification = request.Notification;
 
@@ -42,5 +42,7 @@ public class ProcessPaymentProcessedCommandHandler(
 
         await sagaRepository.UpdateAsync(saga, ct);
         logger.SagaTransitioned(saga.OrderId, saga.CurrentState.ToString());
+
+        return Unit.Value;
     }
 }

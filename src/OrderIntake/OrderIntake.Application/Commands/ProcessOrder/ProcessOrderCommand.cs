@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Shared.Events;
 
 namespace OrderIntake.Application.Commands.ProcessOrder;
@@ -8,4 +8,4 @@ namespace OrderIntake.Application.Commands.ProcessOrder;
 /// and notify the orchestrator.
 /// </summary>
 /// <param name="Event">The raw OrderPlaced event from Kafka.</param>
-public record ProcessOrderCommand(OrderPlacedEvent Event) : IRequest;
+public record ProcessOrderCommand(OrderPlacedEvent Event) : ICommand;

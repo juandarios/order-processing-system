@@ -1,6 +1,6 @@
 using System.Net.Http.Json;
 using FluentAssertions;
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Application.Commands.ProcessOrder;
 using OrderIntake.Domain.Enums;

@@ -281,8 +281,8 @@ POST /config/payment-gateway
 | Database | PostgreSQL |
 | Architecture | Clean Architecture + CQRS |
 | Domain | Pragmatic DDD |
-| Mediator | MediatR |
-| Validation | FluentValidation (MediatR pipeline behavior) |
+| Mediator | Mediator (MIT community fork by martinothamar — do NOT use MediatR) |
+| Validation | FluentValidation (Mediator pipeline behavior) |
 | Error handling | Global middleware + ProblemDetails (RFC 7807) |
 | Logging | .NET native logger (structured logging) |
 | IDs | UUID v7 via UUIDNext package |
@@ -551,7 +551,8 @@ The `AppHost` project orchestrates all services for local development.
 
 ## Important Rules
 
-1. **Never place business logic in controllers.** Controllers only receive requests, send to MediatR, and return responses.
+1. **Never place business logic in controllers.** Controllers only receive requests, send to Mediator, and return responses.
+1a. **Do not use MediatR.** Use Mediator (MIT community fork by martinothamar, packages: `Mediator.Abstractions` + `Mediator.SourceGenerator`) instead. MediatR requires a paid commercial license since v12.4.0.
 2. **Never reference Infrastructure from Domain.** Domain must have zero external dependencies.
 3. **Never reference Infrastructure from Application.** Application only uses interfaces defined in its own `Interfaces/` folder.
 4. **Always use UUID v7** for all new identifiers.

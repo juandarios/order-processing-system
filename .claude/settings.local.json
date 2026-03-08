@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet add src/PaymentService/PaymentService.Application/PaymentService.Application.csproj reference src/Shared/Shared.csproj)",
+      "Bash(dotnet add src/PaymentService/PaymentService.Application/PaymentService.Application.csproj package Microsoft.Extensions.Logging.Abstractions)",
+      "Bash(dotnet add src/PaymentService/PaymentService.Application/PaymentService.Application.csproj package UUIDNext)",
+      "Bash(\"C:\\\\Users\\\\juand\\\\source\\\\tests\\\\order-processing-system\\\\src\\\\PaymentService\\\\PaymentService.Api\\\\appsettings.json\":*)",
+      "Bash(dotnet add src/PaymentService/PaymentService.Infrastructure/PaymentService.Infrastructure.csproj reference src/Shared/Shared.csproj)",
+      "Bash(dotnet build src/PaymentService/PaymentService.Api/PaymentService.Api.csproj)",
+      "Bash(dotnet add src/PaymentService/PaymentService.Infrastructure/PaymentService.Infrastructure.csproj package Microsoft.Extensions.Options)",
+      "Bash(dotnet add src/PaymentService/PaymentService.Infrastructure/PaymentService.Infrastructure.csproj package Microsoft.Extensions.Logging.Abstractions)",
+      "Bash(\"C:\\\\Users\\\\juand\\\\source\\\\tests\\\\order-processing-system\\\\src\\\\OrderOrchestrator\\\\OrderOrchestrator.Api\\\\appsettings.json\":*)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Application/OrderOrchestrator.Application.csproj reference src/Shared/Shared.csproj)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Application/OrderOrchestrator.Application.csproj reference src/OrderOrchestrator/OrderOrchestrator.Infrastructure/OrderOrchestrator.Infrastructure.csproj)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Application/OrderOrchestrator.Application.csproj package Microsoft.Extensions.Logging.Abstractions)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Application/OrderOrchestrator.Application.csproj package UUIDNext)",
+      "Bash(dotnet remove src/OrderOrchestrator/OrderOrchestrator.Application/OrderOrchestrator.Application.csproj reference src/OrderOrchestrator/OrderOrchestrator.Infrastructure/OrderOrchestrator.Infrastructure.csproj)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Application/OrderOrchestrator.Application.csproj package Stateless)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Infrastructure/OrderOrchestrator.Infrastructure.csproj package Microsoft.Extensions.Options)",
+      "Bash(dotnet add src/OrderOrchestrator/OrderOrchestrator.Infrastructure/OrderOrchestrator.Infrastructure.csproj package Microsoft.Extensions.Hosting.Abstractions)",
+      "Bash(dotnet build src/OrderOrchestrator/OrderOrchestrator.Api/OrderOrchestrator.Api.csproj)",
+      "Bash(dotnet build order-processing-system.sln)",
+      "Bash(\"C:\\\\Users\\\\juand\\\\source\\\\tests\\\\order-processing-system\\\\docker\\\\postgres-init.sh\":*)",
+      "Bash(dotnet build tests/OrderIntake.UnitTests/OrderIntake.UnitTests.csproj)",
+      "Bash(dotnet build tests/PaymentService.UnitTests/PaymentService.UnitTests.csproj tests/OrderOrchestrator.UnitTests/OrderOrchestrator.UnitTests.csproj)",
+      "Bash(dotnet test tests/OrderIntake.UnitTests/OrderIntake.UnitTests.csproj tests/PaymentService.UnitTests/PaymentService.UnitTests.csproj tests/OrderOrchestrator.UnitTests/OrderOrchestrator.UnitTests.csproj --no-build)",
+      "Bash(dotnet test tests/OrderOrchestrator.UnitTests/OrderOrchestrator.UnitTests.csproj --no-build)",
+      "Bash(dotnet build tests/PaymentService.UnitTests/PaymentService.UnitTests.csproj)",
+      "Bash(dotnet test tests/PaymentService.UnitTests/PaymentService.UnitTests.csproj -v detailed)",
+      "Bash(dotnet test tests/PaymentService.UnitTests/PaymentService.UnitTests.csproj --list-tests)",
+      "Bash(grep -v \"^$\")",
+      "Bash(dotnet build tests/OrderOrchestrator.UnitTests/OrderOrchestrator.UnitTests.csproj)",
+      "Bash(dotnet test tests/PaymentService.UnitTests/PaymentService.UnitTests.csproj --no-build)",
+      "Bash(dotnet build tests/OrderIntake.IntegrationTests/OrderIntake.IntegrationTests.csproj)",
+      "Bash(dotnet build tests/PaymentService.IntegrationTests/PaymentService.IntegrationTests.csproj)",
+      "Bash(dotnet build tests/OrderOrchestrator.IntegrationTests/OrderOrchestrator.IntegrationTests.csproj)"
+    ]
+  }
+}

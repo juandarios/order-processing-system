@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using OrderOrchestrator.Application.Interfaces;
 using OrderOrchestrator.Application.Logging;
@@ -19,12 +19,12 @@ public class ProcessStockValidatedCommandHandler(
     IOrderSagaRepository sagaRepository,
     IPaymentServiceClient paymentClient,
     ILogger<ProcessStockValidatedCommandHandler> logger)
-    : IRequestHandler<ProcessStockValidatedCommand>
+    : ICommandHandler<ProcessStockValidatedCommand>
 {
     /// <summary>
     /// Processes the stock validation result and drives the state machine.
     /// </summary>
-    public async Task Handle(ProcessStockValidatedCommand request, CancellationToken ct)
+    public async ValueTask<Unit> Handle(ProcessStockValidatedCommand request, CancellationToken ct)
     {
         var notification = request.Notification;
 
@@ -64,5 +64,7 @@ public class ProcessStockValidatedCommandHandler(
             await sagaRepository.UpdateAsync(saga, ct);
             logger.SagaCancelled(saga.OrderId);
         }
+
+        return Unit.Value;
     }
 }

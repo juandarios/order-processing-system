@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 
 namespace OrderIntake.Application.Queries.GetOrder;
 
@@ -6,7 +6,7 @@ namespace OrderIntake.Application.Queries.GetOrder;
 /// Query to retrieve an order by its unique identifier.
 /// </summary>
 /// <param name="OrderId">The unique identifier of the order to retrieve.</param>
-public record GetOrderQuery(Guid OrderId) : IRequest<GetOrderResponse?>;
+public record GetOrderQuery(Guid OrderId) : IQuery<GetOrderResponse?>;
 
 /// <summary>
 /// Response DTO for the GetOrderQuery.

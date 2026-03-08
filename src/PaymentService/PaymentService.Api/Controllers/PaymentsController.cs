@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.AspNetCore.Mvc;
 using PaymentService.Application.Commands.InitiatePayment;
 using PaymentService.Application.Commands.ProcessWebhook;

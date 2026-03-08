@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Confluent.Kafka;
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

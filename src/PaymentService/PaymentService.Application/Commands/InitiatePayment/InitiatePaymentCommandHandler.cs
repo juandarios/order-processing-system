@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using PaymentService.Application.Interfaces;
 using PaymentService.Application.Logging;
@@ -24,7 +24,7 @@ public class InitiatePaymentCommandHandler(
     /// <param name="request">The command with order payment details.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The generated payment identifier.</returns>
-    public async Task<Guid> Handle(InitiatePaymentCommand request, CancellationToken ct)
+    public async ValueTask<Guid> Handle(InitiatePaymentCommand request, CancellationToken ct)
     {
         var paymentId = Uuid.NewSequential();
         var payment = Payment.Create(paymentId, request.OrderId, request.Amount, request.Currency);

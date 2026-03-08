@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using PaymentService.Api.Middleware;
 using PaymentService.Application.Interfaces;
 using PaymentService.Infrastructure.HttpClients;
@@ -5,9 +6,11 @@ using PaymentService.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// MediatR
-builder.Services.AddMediatR(cfg =>
-    cfg.RegisterServicesFromAssembly(typeof(PaymentService.Application.Commands.InitiatePayment.InitiatePaymentCommand).Assembly));
+// Mediator (MIT community fork — replaces MediatR)
+builder.Services.AddMediator(options =>
+{
+    options.ServiceLifetime = ServiceLifetime.Scoped;
+});
 
 // Controllers
 builder.Services.AddControllers();

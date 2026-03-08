@@ -358,8 +358,8 @@ When `stockValidated` is `false`, at least one item has `stockAvailable: false`.
 | **Database** | PostgreSQL | One engine, three databases (one per service) |
 | **Architecture** | Clean Architecture + CQRS | Clear structure, separation of concerns |
 | **Domain** | Pragmatic DDD | Value Objects, Entities, Aggregates, Domain Events |
-| **Mediator** | MediatR | Implements CQRS in .NET |
-| **Validation** | FluentValidation | Expressive rules, testable in isolation, MediatR pipeline |
+| **Mediator** | Mediator (MIT community fork, martinothamar) | Implements CQRS in .NET. MediatR requires a paid commercial license since v12.4.0; Mediator is the MIT-licensed community fork with a compatible API and source-generator-based implementation for better performance. |
+| **Validation** | FluentValidation | Expressive rules, testable in isolation, Mediator pipeline |
 | **Error handling** | Global middleware + ProblemDetails | RFC 7807 standard, clean controllers |
 | **Logging** | .NET native logger | Structured logging, Aspire integration, no extra dependencies |
 | **IDs** | UUID v7 (UUIDNext) | Chronologically ordered, optimized for PostgreSQL indexes |

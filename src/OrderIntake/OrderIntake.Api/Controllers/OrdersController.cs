@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.AspNetCore.Mvc;
 using OrderIntake.Application.Queries.GetOrder;
 using OrderIntake.Domain.Exceptions;

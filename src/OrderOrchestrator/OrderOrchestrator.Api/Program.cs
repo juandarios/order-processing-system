@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using OrderOrchestrator.Api.Middleware;
 using OrderOrchestrator.Application.Interfaces;
 using OrderOrchestrator.Infrastructure.BackgroundJobs;
@@ -6,9 +7,11 @@ using OrderOrchestrator.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// MediatR
-builder.Services.AddMediatR(cfg =>
-    cfg.RegisterServicesFromAssembly(typeof(OrderOrchestrator.Application.Commands.ProcessStockValidated.ProcessStockValidatedCommand).Assembly));
+// Mediator (MIT community fork — replaces MediatR)
+builder.Services.AddMediator(options =>
+{
+    options.ServiceLifetime = ServiceLifetime.Scoped;
+});
 
 // Controllers
 builder.Services.AddControllers();

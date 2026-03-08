@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using OrderIntake.Api.Middleware;
 using OrderIntake.Application.Interfaces;
 using OrderIntake.Infrastructure.HttpClients;
@@ -8,9 +9,11 @@ using OrderIntake.Infrastructure.Persistence.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// MediatR
-builder.Services.AddMediatR(cfg =>
-    cfg.RegisterServicesFromAssembly(typeof(OrderIntake.Application.Commands.ProcessOrder.ProcessOrderCommand).Assembly));
+// Mediator (MIT community fork — replaces MediatR)
+builder.Services.AddMediator(options =>
+{
+    options.ServiceLifetime = ServiceLifetime.Scoped;
+});
 
 // Controllers
 builder.Services.AddControllers();

@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using PaymentService.Application.Interfaces;
 using PaymentService.Application.Logging;
@@ -16,7 +16,7 @@ public class ProcessWebhookCommandHandler(
     IPaymentRepository paymentRepository,
     IOrchestratorClient orchestratorClient,
     ILogger<ProcessWebhookCommandHandler> logger)
-    : IRequestHandler<ProcessWebhookCommand>
+    : ICommandHandler<ProcessWebhookCommand>
 {
     /// <summary>
     /// Processes the gateway webhook result.
@@ -24,7 +24,7 @@ public class ProcessWebhookCommandHandler(
     /// <param name="request">The command with payment result details.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <exception cref="NotFoundException">Thrown when the payment is not found.</exception>
-    public async Task Handle(ProcessWebhookCommand request, CancellationToken ct)
+    public async ValueTask<Unit> Handle(ProcessWebhookCommand request, CancellationToken ct)
     {
         var payment = await paymentRepository.GetByOrderIdAsync(request.OrderId, ct)
             ?? throw new NotFoundException(nameof(Domain.Entities.Payment), request.OrderId);
@@ -60,5 +60,7 @@ public class ProcessWebhookCommandHandler(
 
         await orchestratorClient.NotifyPaymentProcessedAsync(notification, ct);
         logger.OrchestratorNotified(payment.Id, request.OrderId, request.Status);
+
+        return Unit.Value;
     }
 }

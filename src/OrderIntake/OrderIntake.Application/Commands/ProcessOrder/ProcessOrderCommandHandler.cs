@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.Extensions.Logging;
 using OrderIntake.Application.Interfaces;
 using OrderIntake.Application.Logging;
@@ -20,14 +20,14 @@ public class ProcessOrderCommandHandler(
     IStockServiceClient stockClient,
     IOrchestratorClient orchestratorClient,
     ILogger<ProcessOrderCommandHandler> logger)
-    : IRequestHandler<ProcessOrderCommand>
+    : ICommandHandler<ProcessOrderCommand>
 {
     /// <summary>
     /// Processes the incoming order event.
     /// </summary>
     /// <param name="request">The command containing the event payload.</param>
     /// <param name="ct">Cancellation token.</param>
-    public async Task Handle(ProcessOrderCommand request, CancellationToken ct)
+    public async ValueTask<Unit> Handle(ProcessOrderCommand request, CancellationToken ct)
     {
         var payload = request.Event.Payload;
 
@@ -85,5 +85,7 @@ public class ProcessOrderCommandHandler(
 
         await orchestratorClient.NotifyStockValidatedAsync(notification, ct);
         logger.OrchestratorNotified(order.Id, allInStock);
+
+        return Unit.Value;
     }
 }

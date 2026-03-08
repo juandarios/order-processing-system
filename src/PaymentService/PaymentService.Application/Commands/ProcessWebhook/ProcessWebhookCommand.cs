@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 
 namespace PaymentService.Application.Commands.ProcessWebhook;
 
@@ -17,4 +17,4 @@ public record ProcessWebhookCommand(
     string Status,
     string? Reason,
     decimal Amount,
-    string Currency) : IRequest;
+    string Currency) : ICommand;

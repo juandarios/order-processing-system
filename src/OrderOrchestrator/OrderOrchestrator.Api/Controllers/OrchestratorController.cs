@@ -1,4 +1,4 @@
-using MediatR;
+using Mediator;
 using Microsoft.AspNetCore.Mvc;
 using OrderOrchestrator.Application.Commands.ProcessPaymentProcessed;
 using OrderOrchestrator.Application.Commands.ProcessStockValidated;
