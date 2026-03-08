@@ -42,4 +42,12 @@ public static partial class OrchestratorLogMessages
     /// <summary>Logs that the payment service is unavailable after all retries.</summary>
     [LoggerMessage(Level = LogLevel.Error, Message = "Payment service unavailable for order {OrderId}. Saga remains in StockValidated state. Reason: {Reason}")]
     public static partial void PaymentInitiationFailed(this ILogger logger, Guid orderId, string reason);
+
+    /// <summary>
+    /// Logs that a payment failed with a specific status and reason.
+    /// Used to surface gateway-level failure details (e.g. gateway_unavailable, gateway_timeout)
+    /// when transitioning the saga to the Failed terminal state.
+    /// </summary>
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Payment failed for order {OrderId} with status '{Status}' and reason '{Reason}'")]
+    public static partial void PaymentFailedWithReason(this ILogger logger, Guid orderId, string status, string reason);
 }

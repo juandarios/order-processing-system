@@ -41,7 +41,9 @@ Responsible for payment processing. Acts as an intermediary between the Orchestr
 - Receives `orderId`, `totalAmount` and `currency` from the Orchestrator
 - **Persists the payment in `Pending` status and responds 202 Accepted to S3 immediately** (Phase 1 — synchronous)
 - **Calls the Payment Gateway in background** using a dedicated DI scope and fire-and-forget (Phase 2 — asynchronous, S2's internal responsibility). S3 is never blocked on gateway availability.
-- If the gateway call fails after Polly exhausts all retries: marks the payment as `Expired`, then notifies S3 via `POST /orchestrator/orders/payment-processed` with `status = expired`
+- If the gateway call fails after Polly exhausts all retries, the failure is classified into two distinct cases and S3 is notified accordingly:
+  - **Gateway unreachable** (`HttpRequestException`, `SocketException`): payment marked as `Failed`, S3 notified with `status = "failed"`, `reason = "gateway_unavailable"`.
+  - **Gateway timeout** (`TaskCanceledException`, Polly `TimeoutRejectedException`): payment marked as `Expired`, S3 notified with `status = "expired"`, `reason = "gateway_timeout"`.
 - Exposes `POST /payments/webhook` to receive the gateway response
 - Notifies the Orchestrator via HTTP once the webhook is received; if orchestrator notification fails the gateway still receives 200 OK
 - **Design decision — separation of persistence from downstream calls**: S2 separates persistence (synchronous, responsibility towards S3) from gateway communication (asynchronous, S2's internal responsibility). S3 is responded to once the payment is persisted, regardless of downstream gateway availability. This is the same principle applied in S3: respond to the caller once the state is persisted, handle downstream failures internally.
@@ -327,7 +329,13 @@ When `stockValidated` is `false`, at least one item has `stockAvailable: false`.
 }
 ```
 
-`status`: `approved`, `rejected` or `expired`. `reason` applies when `rejected` (e.g. `insufficient_funds`, `card_expired`).
+`status` valid values:
+- `approved` — gateway approved the payment.
+- `rejected` — gateway rejected the payment (e.g. insufficient funds).
+- `expired` — gateway was reachable but did not respond within the timeout window (`reason = "gateway_timeout"`).
+- `failed` — gateway was unreachable, connectivity failure (`reason = "gateway_unavailable"`).
+
+`reason` valid values: `insufficient_funds`, `card_expired` (for `rejected`); `gateway_timeout` (for `expired`); `gateway_unavailable` (for `failed`). Null for `approved`.
 
 ### Payment Request
 - **Sent by:** S3 → S2

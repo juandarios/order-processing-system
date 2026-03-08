@@ -54,4 +54,18 @@ public static partial class PaymentLogMessages
     /// <summary>Logs that the background gateway call succeeded (202 Accepted). The gateway will deliver the result via webhook.</summary>
     [LoggerMessage(Level = LogLevel.Information, Message = "Background gateway call succeeded for payment {PaymentId} order {OrderId}. Awaiting webhook callback.")]
     public static partial void GatewayCallSucceeded(this ILogger logger, Guid paymentId, Guid orderId);
+
+    /// <summary>
+    /// Logs that the payment gateway was unreachable (connectivity failure — gateway never contacted).
+    /// This differs from a timeout, where the gateway was reached but did not respond in time.
+    /// </summary>
+    [LoggerMessage(Level = LogLevel.Error, Message = "Payment gateway unavailable for order {OrderId} payment {PaymentId}. All retry attempts exhausted. Error: {Error}")]
+    public static partial void GatewayUnavailable(this ILogger logger, Guid paymentId, Guid orderId, string error);
+
+    /// <summary>
+    /// Logs that the payment gateway timed out (gateway was reached but did not respond in time).
+    /// This differs from unavailability, where the gateway could not be contacted at all.
+    /// </summary>
+    [LoggerMessage(Level = LogLevel.Error, Message = "Payment gateway timed out for order {OrderId} payment {PaymentId}. All retry attempts exhausted.")]
+    public static partial void GatewayTimeout(this ILogger logger, Guid paymentId, Guid orderId);
 }

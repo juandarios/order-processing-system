@@ -49,7 +49,12 @@ public class ProcessPaymentProcessedCommandHandler(
                 break;
             default:
                 machine.FirePaymentFailed();
-                logger.PaymentFailed(saga.OrderId, notification.Status);
+                // Log with reason when available so gateway-level failure causes
+                // (gateway_unavailable, gateway_timeout, etc.) are visible in the orchestrator.
+                if (!string.IsNullOrWhiteSpace(notification.Reason))
+                    logger.PaymentFailedWithReason(saga.OrderId, notification.Status, notification.Reason);
+                else
+                    logger.PaymentFailed(saga.OrderId, notification.Status);
                 break;
         }
 

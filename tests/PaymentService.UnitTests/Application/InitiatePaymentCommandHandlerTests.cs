@@ -170,6 +170,88 @@ public class InitiatePaymentCommandHandlerTests
     }
 
     /// <summary>
+    /// When the gateway is unreachable (HttpRequestException inner exception), the handler must
+    /// notify the orchestrator with <c>status = "failed"</c> and <c>reason = "gateway_unavailable"</c>.
+    /// </summary>
+    [Fact]
+    public async Task ChargeGateway_WhenGatewayUnreachable_NotifiesOrchestratorWithFailedAndGatewayUnavailable()
+    {
+        // Arrange
+        var orderId = Guid.NewGuid();
+        var innerException = new System.Net.Http.HttpRequestException("Connection refused");
+        var gatewayException = new PaymentGatewayUnavailableException("Gateway unreachable", innerException);
+
+        _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+
+        _gatewayClient
+            .ChargeAsync(Arg.Any<Guid>(), orderId, Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(gatewayException);
+
+        // Return a Pending payment when GetByIdAsync is called inside the catch block.
+        _paymentRepository
+            .GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(ci => Payment.Create(ci.ArgAt<Guid>(0), orderId, 80.00m, "USD"));
+
+        var command = new InitiatePaymentCommand(orderId, 80.00m, "USD");
+
+        // Act — must not throw
+        await _handler.Handle(command, CancellationToken.None);
+
+        // Allow the background Task.Run to complete
+        await Task.Delay(300);
+
+        // Assert — orchestrator notified with failed / gateway_unavailable
+        await _orchestratorClient.Received(1).NotifyPaymentProcessedAsync(
+            Arg.Is<Shared.Contracts.PaymentProcessedNotification>(n =>
+                n.OrderId == orderId &&
+                n.Status == "failed" &&
+                n.Reason == "gateway_unavailable"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// When the gateway call times out (TaskCanceledException inner exception), the handler must
+    /// notify the orchestrator with <c>status = "expired"</c> and <c>reason = "gateway_timeout"</c>.
+    /// </summary>
+    [Fact]
+    public async Task ChargeGateway_WhenGatewayTimesOut_NotifiesOrchestratorWithExpiredAndGatewayTimeout()
+    {
+        // Arrange
+        var orderId = Guid.NewGuid();
+        var innerException = new TaskCanceledException("The request was canceled due to a timeout.");
+        var gatewayException = new PaymentGatewayUnavailableException("Gateway timed out", innerException);
+
+        _paymentRepository.GetByOrderIdAsync(orderId, Arg.Any<CancellationToken>())
+            .Returns((Payment?)null);
+
+        _gatewayClient
+            .ChargeAsync(Arg.Any<Guid>(), orderId, Arg.Any<decimal>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(gatewayException);
+
+        // Return a Pending payment when GetByIdAsync is called inside the catch block.
+        _paymentRepository
+            .GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(ci => Payment.Create(ci.ArgAt<Guid>(0), orderId, 90.00m, "USD"));
+
+        var command = new InitiatePaymentCommand(orderId, 90.00m, "USD");
+
+        // Act — must not throw
+        await _handler.Handle(command, CancellationToken.None);
+
+        // Allow the background Task.Run to complete
+        await Task.Delay(300);
+
+        // Assert — orchestrator notified with expired / gateway_timeout
+        await _orchestratorClient.Received(1).NotifyPaymentProcessedAsync(
+            Arg.Is<Shared.Contracts.PaymentProcessedNotification>(n =>
+                n.OrderId == orderId &&
+                n.Status == "expired" &&
+                n.Reason == "gateway_timeout"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Cancelling the request CancellationToken after Handle returns must not prevent the
     /// background task from completing. The background gateway call uses CancellationToken.None
     /// and is independent of the HTTP request lifecycle.

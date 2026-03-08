@@ -93,6 +93,7 @@ public class Payment
 
     /// <summary>
     /// Marks the payment as expired (no gateway response received in time).
+    /// Use this when the payment gateway was reached but did not respond within the allowed window.
     /// </summary>
     /// <exception cref="DomainException">Thrown when the payment is not in Pending status.</exception>
     public void Expire()
@@ -101,6 +102,21 @@ public class Payment
             throw new DomainException($"Cannot expire payment in status '{Status}'. Expected: Pending.");
 
         Status = PaymentStatus.Expired;
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
+    /// Marks the payment as failed because the gateway was unreachable (never contacted).
+    /// Use this when connectivity to the gateway could not be established, as opposed to
+    /// <see cref="Expire"/> which applies when the gateway was reached but did not respond in time.
+    /// </summary>
+    /// <exception cref="DomainException">Thrown when the payment is not in Pending status.</exception>
+    public void Fail()
+    {
+        if (Status != PaymentStatus.Pending)
+            throw new DomainException($"Cannot fail payment in status '{Status}'. Expected: Pending.");
+
+        Status = PaymentStatus.Failed;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 }

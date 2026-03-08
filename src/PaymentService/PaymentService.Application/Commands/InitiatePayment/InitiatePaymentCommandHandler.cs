@@ -103,6 +103,22 @@ public class InitiatePaymentCommandHandler(
     /// Calls the payment gateway and handles the result or failure entirely within its own
     /// DI scope. All dependencies are passed as parameters — this method has no access to any
     /// instance field other than the logger (which is a singleton-safe dependency).
+    /// <para>
+    /// On failure, distinguishes between two cases:
+    /// <list type="bullet">
+    /// <item><term>Gateway unreachable</term><description>
+    /// Inner exception is <see cref="System.Net.Http.HttpRequestException"/> or
+    /// <see cref="System.Net.Sockets.SocketException"/>. Payment transitions to
+    /// <c>Failed</c>; orchestrator notified with <c>status="failed"</c>,
+    /// <c>reason="gateway_unavailable"</c>.
+    /// </description></item>
+    /// <item><term>Gateway timeout</term><description>
+    /// Inner exception is <see cref="TaskCanceledException"/> (Polly wraps
+    /// <c>TimeoutRejectedException</c>). Payment transitions to <c>Expired</c>;
+    /// orchestrator notified with <c>status="expired"</c>, <c>reason="gateway_timeout"</c>.
+    /// </description></item>
+    /// </list>
+    /// </para>
     /// </summary>
     /// <param name="paymentId">The payment identifier to charge.</param>
     /// <param name="orderId">The order identifier associated with this payment.</param>
@@ -132,22 +148,54 @@ public class InitiatePaymentCommandHandler(
         }
         catch (PaymentGatewayUnavailableException ex)
         {
-            logger.GatewayCallFailed(paymentId, orderId, ex.Message);
+            // Distinguish between two distinct failure modes:
+            //
+            // CASE 1 — Gateway unreachable (connectivity failure — gateway never contacted):
+            //   Inner exception is HttpRequestException or SocketException.
+            //   Status → "failed", reason → "gateway_unavailable".
+            //   Payment transitions to Failed.
+            //
+            // CASE 2 — Gateway reachable but no response within the timeout window:
+            //   Inner exception is TaskCanceledException (Polly TimeoutRejectedException wraps it).
+            //   Status → "expired", reason → "gateway_timeout".
+            //   Payment transitions to Expired.
+            bool isTimeout = ex.InnerException is TaskCanceledException
+                             || ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase);
 
-            // Update payment to Expired and notify S3 so the saga can transition to Failed.
+            string notificationStatus;
+            string notificationReason;
+
+            if (isTimeout)
+            {
+                logger.GatewayTimeout(paymentId, orderId);
+                notificationStatus = "expired";
+                notificationReason = "gateway_timeout";
+            }
+            else
+            {
+                logger.GatewayUnavailable(paymentId, orderId, ex.Message);
+                notificationStatus = "failed";
+                notificationReason = "gateway_unavailable";
+            }
+
+            // Update payment status and notify S3 so the saga can transition to Failed.
             try
             {
                 var failedPayment = await repository.GetByIdAsync(paymentId, ct);
                 if (failedPayment is not null && failedPayment.Status == Domain.Enums.PaymentStatus.Pending)
                 {
-                    failedPayment.Expire();
+                    if (isTimeout)
+                        failedPayment.Expire();
+                    else
+                        failedPayment.Fail();
+
                     await repository.UpdateAsync(failedPayment, ct);
 
                     var notification = new PaymentProcessedNotification(
                         OrderId: orderId,
                         PaymentId: paymentId,
-                        Status: "expired",
-                        Reason: "gateway_unavailable",
+                        Status: notificationStatus,
+                        Reason: notificationReason,
                         Amount: amount,
                         Currency: currency,
                         OccurredAt: DateTimeOffset.UtcNow);
