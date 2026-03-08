@@ -391,6 +391,23 @@ When `stockValidated` is `false`, at least one item has `stockAvailable: false`.
 
 Kafka runs in **KRaft** (Kafka Raft) mode — the built-in consensus mechanism that replaces ZooKeeper. No additional `zookeeper` container is needed.
 
+### Confluent.Kafka — Kerberos dependency in Docker
+
+Services that use Confluent.Kafka (S1 — Order Intake, S3 — Order Orchestrator) require the `libgssapi_krb5` shared library at runtime. On Debian/Ubuntu-based Docker images (`mcr.microsoft.com/dotnet/aspnet:8.0`), this is provided by the `libgssapi-krb5-2` package. Omitting this package causes a startup failure:
+
+```
+Cannot load library libgssapi_krb5.so.2
+Error: libgssapi_krb5.so.2: cannot open shared object file: No such file or directory
+```
+
+The fix is applied in the final stage of each affected Dockerfile:
+
+```dockerfile
+RUN apt-get update && apt-get install -y libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
+```
+
+For Alpine-based images, the equivalent package is `krb5-libs` (installed with `apk add --no-cache krb5-libs`).
+
 The single Kafka node acts as both **broker and controller** simultaneously. Two listeners are configured:
 - **Internal listener** — used by services inside the Docker network to produce/consume messages.
 - **Host listener** — used by the host machine (e.g. for local testing with `dotnet run`).

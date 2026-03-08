@@ -19,5 +19,7 @@ RUN dotnet publish "OrderIntake.Api.csproj" -c Release -o /app/publish /p:UseApp
 
 FROM base AS final
 WORKDIR /app
+# Required by Confluent.Kafka: libgssapi_krb5 is needed at runtime in Debian/Ubuntu-based images.
+RUN apt-get update && apt-get install -y libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "OrderIntake.Api.dll"]
