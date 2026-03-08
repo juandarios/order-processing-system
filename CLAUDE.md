@@ -55,7 +55,7 @@ order-processing-system/
 | # | Name | Responsibility | ORM | Incoming | Outgoing |
 |---|---|---|---|---|---|
 | **S0** | Order Producer | REST API + Kafka Producer | - | HTTP (Postman) | Kafka → order-placed |
-| **S1** | Order Intake | Kafka Consumer. Saves order, validates stock, notifies orchestrator | EF Core | Kafka ← order-placed | HTTP → Stock Mock, HTTP → S3 |
+| **S1** | Order Intake | Kafka Consumer. Saves order, validates stock, notifies orchestrator. Routes failures to DLQ. Publishes validation errors to order-validation-errors. | EF Core | Kafka ← order-placed | HTTP → Stock Mock, HTTP → S3, Kafka → order-placed-dlq, Kafka → order-validation-errors |
 | **S2** | Payment Service | REST API. Receives payment request, calls gateway, receives webhook | Dapper | HTTP (S3), HTTP /webhook (Gateway Mock) | HTTP → Gateway Mock, HTTP → S3 |
 | **S3** | Order Orchestrator | REST API + State Machine. Orchestrates full order lifecycle | Dapper | HTTP (S1), HTTP (S2) | HTTP → S2 |
 | **Mock 1** | Stock Service | Simulates stock validation | - | HTTP (S1) | HTTP response → S1 |
@@ -203,7 +203,7 @@ order_sagas (id UUID PK, order_id UUID UNIQUE, current_state VARCHAR(50),
 ## Kafka
 
 - **Client:** Confluent.Kafka with custom abstraction layer (do not use MassTransit for Kafka)
-- **Topic:** `order-placed`
+- **Topics:** `order-placed`, `order-placed-dlq` (dead letter queue), `order-validation-errors` (validation topic)
 - **Event format:** JSON with envelope (eventId, eventType, occurredAt, version, payload)
 - **IDs:** UUID v7 for all identifiers (use `UUIDNext` package in .NET 8)
 - **Consensus:** KRaft mode — Kafka's built-in consensus mechanism, no ZooKeeper container needed. Two listeners: one for the internal Docker network, one for the host machine.

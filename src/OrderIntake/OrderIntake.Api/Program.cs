@@ -47,10 +47,12 @@ builder.Services.AddHttpClient<IOrchestratorClient, OrchestratorClient>(client =
     client.BaseAddress = new Uri(builder.Configuration["Services:Orchestrator"]!);
 });
 
-// Kafka consumer
+// Kafka consumer and DLQ
 builder.Services.Configure<KafkaConsumerOptions>(builder.Configuration.GetSection("Kafka"));
 builder.Services.AddKeyedSingleton<IEventConsumer, KafkaConsumer>("kafka");
 builder.Services.AddHostedService<KafkaConsumerHostedService>();
+builder.Services.AddScoped<IDlqPublisher, KafkaDlqPublisher>();
+builder.Services.AddHostedService<DlqConsumerHostedService>();
 
 // OpenTelemetry — traces, metrics, logs exported via OTLP
 // OTLP endpoint is configured via OTEL_EXPORTER_OTLP_ENDPOINT environment variable.

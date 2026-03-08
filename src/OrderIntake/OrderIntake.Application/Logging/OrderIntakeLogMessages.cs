@@ -30,4 +30,16 @@ public static partial class OrderIntakeLogMessages
     /// <summary>Logs a Kafka consumer error.</summary>
     [LoggerMessage(Level = LogLevel.Error, Message = "Error consuming Kafka message for order")]
     public static partial void KafkaConsumeError(this ILogger logger, Exception ex);
+
+    /// <summary>Logs that a message was routed to the DLQ.</summary>
+    [LoggerMessage(Level = LogLevel.Error, Message = "Message routed to DLQ. ErrorType={ErrorType}, Detail={ErrorDetail}")]
+    public static partial void MessageRoutedToDlq(this ILogger logger, string errorType, string errorDetail);
+
+    /// <summary>Logs that a DLQ message was successfully published.</summary>
+    [LoggerMessage(Level = LogLevel.Information, Message = "DLQ message published. ErrorType={ErrorType}, Source={SourceService}")]
+    public static partial void DlqMessagePublished(this ILogger logger, string errorType, string sourceService);
+
+    /// <summary>Logs a DLQ monitoring entry (consumed by the DLQ consumer).</summary>
+    [LoggerMessage(Level = LogLevel.Error, Message = "DLQ entry received. ErrorType={ErrorType}, Detail={ErrorDetail}, FailedAt={FailedAt}, Retries={RetryCount}, Source={SourceService}")]
+    public static partial void DlqEntryReceived(this ILogger logger, string errorType, string errorDetail, DateTimeOffset failedAt, int retryCount, string sourceService);
 }

@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OrderIntake.Application.Interfaces;
 using OrderIntake.Infrastructure.Kafka;
+using NSubstitute;
 using Testcontainers.PostgreSql;
 using WireMock.Server;
 
@@ -43,16 +45,29 @@ public class OrderIntakeWebAppFactory : WebApplicationFactory<Program>, IAsyncLi
                 ["Kafka:BootstrapServers"] = "localhost:9092",
                 ["Kafka:GroupId"] = "test-group",
                 ["Kafka:OrderPlacedTopic"] = "test-order-placed",
+                ["Kafka:DlqTopic"] = "test-order-placed-dlq",
             });
         });
 
         builder.ConfigureTestServices(services =>
         {
-            // Remove Kafka hosted service so it doesn't try to connect during tests
-            var descriptor = services.SingleOrDefault(d =>
+            // Remove Kafka hosted services so they don't try to connect during tests
+            var kafkaDescriptor = services.SingleOrDefault(d =>
                 d.ImplementationType == typeof(KafkaConsumerHostedService));
-            if (descriptor != null)
-                services.Remove(descriptor);
+            if (kafkaDescriptor != null)
+                services.Remove(kafkaDescriptor);
+
+            var dlqDescriptor = services.SingleOrDefault(d =>
+                d.ImplementationType == typeof(DlqConsumerHostedService));
+            if (dlqDescriptor != null)
+                services.Remove(dlqDescriptor);
+
+            // Replace DLQ publisher with a no-op stub for tests
+            var dlqPublisherDescriptor = services.SingleOrDefault(d =>
+                d.ServiceType == typeof(IDlqPublisher));
+            if (dlqPublisherDescriptor != null)
+                services.Remove(dlqPublisherDescriptor);
+            services.AddScoped<IDlqPublisher>(_ => Substitute.For<IDlqPublisher>());
         });
     }
 }

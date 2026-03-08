@@ -234,6 +234,13 @@ POST /config/payment-gateway
 - **Consumed by:** S1
 - **Kafka topic:** `order-placed`
 
+### Dead Letter Queue — `order-placed-dlq`
+- **Published by:** S1 (on processing failure)
+- **Consumed by:** S1 DLQ monitor consumer (logs only)
+- **Kafka topic:** `order-placed-dlq`
+- **Design decision**: Messages that cannot be processed are never silently dropped. They are routed to the DLQ immediately (no retry) for deserialization errors, validation errors, and duplicate orders. Transient errors are routed after Polly retries are exhausted. A monitoring consumer logs each DLQ entry for alerting. The DLQ envelope (`DlqMessage`) includes: `originalMessage`, `errorType`, `errorDetail`, `failedAt`, `retryCount`, `sourceService`.
+- **Error types**: `DeserializationError`, `ValidationError`, `DuplicateOrder`, `TransientError`.
+
 ```json
 {
   "eventId": "018e5e23-...",
