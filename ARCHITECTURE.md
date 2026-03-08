@@ -272,6 +272,12 @@ POST /config/payment-gateway
 }
 ```
 
+### Validation Error Topic — `order-validation-errors`
+- **Published by:** S1 (on domain validation failure)
+- **Kafka topic:** `order-validation-errors`
+- **Design decision**: Business validation failures (e.g. orders violating domain rules) are separated from infrastructure failures. Unlike DLQ messages, validation errors represent intentional rejections that should never be retried. They are routed to a dedicated topic for downstream monitoring, alerting, and potential customer notification flows. The event envelope (`OrderValidationErrorEvent`) includes: `originalMessage`, `errorType`, `errorDetail`, `occurredAt`, `sourceService`.
+- **Error types**: `DomainValidation`.
+
 ### Notification 1 — Stock Validated
 - **Sent by:** S1 → S3
 - **Endpoint:** `POST /orchestrator/orders/stock-validated`

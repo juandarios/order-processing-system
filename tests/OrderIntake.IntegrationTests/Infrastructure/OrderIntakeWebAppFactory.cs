@@ -46,6 +46,7 @@ public class OrderIntakeWebAppFactory : WebApplicationFactory<Program>, IAsyncLi
                 ["Kafka:GroupId"] = "test-group",
                 ["Kafka:OrderPlacedTopic"] = "test-order-placed",
                 ["Kafka:DlqTopic"] = "test-order-placed-dlq",
+                ["Kafka:ValidationErrorTopic"] = "test-order-validation-errors",
             });
         });
 
@@ -68,6 +69,13 @@ public class OrderIntakeWebAppFactory : WebApplicationFactory<Program>, IAsyncLi
             if (dlqPublisherDescriptor != null)
                 services.Remove(dlqPublisherDescriptor);
             services.AddScoped<IDlqPublisher>(_ => Substitute.For<IDlqPublisher>());
+
+            // Replace validation error publisher with a no-op stub for tests
+            var validationErrorDescriptor = services.SingleOrDefault(d =>
+                d.ServiceType == typeof(IValidationErrorPublisher));
+            if (validationErrorDescriptor != null)
+                services.Remove(validationErrorDescriptor);
+            services.AddScoped<IValidationErrorPublisher>(_ => Substitute.For<IValidationErrorPublisher>());
         });
     }
 }

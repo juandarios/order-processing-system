@@ -82,12 +82,17 @@ public class KafkaConsumer(
                 {
                     await mediator.Send(new ProcessOrderCommand(@event), ct);
                 }
+                catch (DomainException domainEx)
+                {
+                    // Business validation error → validation error topic (not DLQ)
+                    logger.ValidationErrorDetected("DomainValidation", domainEx.Message);
+                    await SendToValidationErrorsAsync(result.Message.Value, "DomainValidation", domainEx.Message, ct);
+                }
                 catch (Exception handlerEx)
                 {
-                    // Determine error type based on exception
-                    var errorType = handlerEx is DomainException ? "ValidationError" : "TransientError";
-                    logger.MessageRoutedToDlq(errorType, handlerEx.Message);
-                    await SendToDlqAsync(result.Message.Value, errorType, handlerEx.Message, 0, ct);
+                    // Transient / infrastructure error → DLQ
+                    logger.MessageRoutedToDlq("TransientError", handlerEx.Message);
+                    await SendToDlqAsync(result.Message.Value, "TransientError", handlerEx.Message, 0, ct);
                 }
 
                 consumer.Commit(result);
@@ -104,6 +109,32 @@ public class KafkaConsumer(
         }
 
         consumer.Close();
+    }
+
+    private async Task SendToValidationErrorsAsync(
+        string originalMessage,
+        string errorType,
+        string errorDetail,
+        CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var publisher = scope.ServiceProvider.GetRequiredService<IValidationErrorPublisher>();
+
+            var errorEvent = new OrderValidationErrorEvent(
+                OriginalMessage: originalMessage,
+                ErrorType: errorType,
+                ErrorDetail: errorDetail,
+                OccurredAt: DateTimeOffset.UtcNow,
+                SourceService: SourceService);
+
+            await publisher.PublishAsync(errorEvent, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to publish message to validation error topic. ErrorType={ErrorType}", errorType);
+        }
     }
 
     private async Task SendToDlqAsync(
@@ -151,4 +182,7 @@ public class KafkaConsumerOptions
 
     /// <summary>Gets or sets the dead letter queue topic name.</summary>
     public string DlqTopic { get; set; } = "order-placed-dlq";
+
+    /// <summary>Gets or sets the validation error topic name.</summary>
+    public string ValidationErrorTopic { get; set; } = "order-validation-errors";
 }

@@ -42,4 +42,12 @@ public static partial class OrderIntakeLogMessages
     /// <summary>Logs a DLQ monitoring entry (consumed by the DLQ consumer).</summary>
     [LoggerMessage(Level = LogLevel.Error, Message = "DLQ entry received. ErrorType={ErrorType}, Detail={ErrorDetail}, FailedAt={FailedAt}, Retries={RetryCount}, Source={SourceService}")]
     public static partial void DlqEntryReceived(this ILogger logger, string errorType, string errorDetail, DateTimeOffset failedAt, int retryCount, string sourceService);
+
+    /// <summary>Logs that a validation error was detected and will be published to the validation error topic.</summary>
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Validation error detected. ErrorType={ErrorType}, Detail={ErrorDetail}")]
+    public static partial void ValidationErrorDetected(this ILogger logger, string errorType, string errorDetail);
+
+    /// <summary>Logs that a validation error event was successfully published.</summary>
+    [LoggerMessage(Level = LogLevel.Information, Message = "Validation error event published. ErrorType={ErrorType}, Source={SourceService}")]
+    public static partial void ValidationErrorPublished(this ILogger logger, string errorType, string sourceService);
 }

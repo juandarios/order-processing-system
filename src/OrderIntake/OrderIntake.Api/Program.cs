@@ -90,12 +90,13 @@ builder.Services.AddHttpClient<IOrchestratorClient, OrchestratorClient>(client =
     });
 });
 
-// Kafka consumer and DLQ
+// Kafka consumer, DLQ, and validation errors
 builder.Services.Configure<KafkaConsumerOptions>(builder.Configuration.GetSection("Kafka"));
 builder.Services.AddKeyedSingleton<IEventConsumer, KafkaConsumer>("kafka");
 builder.Services.AddHostedService<KafkaConsumerHostedService>();
 builder.Services.AddScoped<IDlqPublisher, KafkaDlqPublisher>();
 builder.Services.AddHostedService<DlqConsumerHostedService>();
+builder.Services.AddScoped<IValidationErrorPublisher, KafkaValidationErrorPublisher>();
 
 // OpenTelemetry — traces, metrics, logs exported via OTLP
 // OTLP endpoint is configured via OTEL_EXPORTER_OTLP_ENDPOINT environment variable.

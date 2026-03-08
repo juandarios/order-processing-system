@@ -16,5 +16,6 @@ namespace Shared.Serialization;
 [JsonSerializable(typeof(StockItemValidationResult))]
 [JsonSerializable(typeof(PaymentProcessedNotification))]
 [JsonSerializable(typeof(InitiatePaymentRequest))]
+[JsonSerializable(typeof(OrderValidationErrorEvent))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 public partial class AppJsonContext : JsonSerializerContext;

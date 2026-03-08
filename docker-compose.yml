@@ -134,6 +134,7 @@ services:
       Kafka__GroupId: order-intake-group
       Kafka__OrderPlacedTopic: order-placed
       Kafka__DlqTopic: order-placed-dlq
+      Kafka__ValidationErrorTopic: order-validation-errors
       Services__StockService: http://stock-service:8080/
       Services__Orchestrator: http://order-orchestrator:8080/
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
