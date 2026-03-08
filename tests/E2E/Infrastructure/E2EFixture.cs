@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Confluent.Kafka;
 
 namespace E2E.Infrastructure;
 
@@ -79,6 +80,59 @@ public class E2EFixture : IDisposable
             WebhookReason = "card_declined",
             WebhookUrl = PaymentServiceWebhookUrl
         });
+
+    /// <summary>
+    /// Waits until at least one message matching <paramref name="predicate"/> is available
+    /// on the specified Kafka <paramref name="topic"/>, using a dedicated consumer group so
+    /// tests do not interfere with each other.
+    /// </summary>
+    /// <param name="topic">Kafka topic to consume from.</param>
+    /// <param name="consumerGroup">Unique consumer group for this test.</param>
+    /// <param name="predicate">Returns true when the desired message is found.</param>
+    /// <param name="timeout">Maximum time to wait.</param>
+    public static async Task<bool> WaitForKafkaMessageAsync(
+        string topic,
+        string consumerGroup,
+        Func<string, bool> predicate,
+        TimeSpan timeout)
+    {
+        var config = new ConsumerConfig
+        {
+            BootstrapServers = "localhost:9092",
+            GroupId = consumerGroup,
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+            EnableAutoCommit = false
+        };
+
+        using var consumer = new ConsumerBuilder<string, string>(config).Build();
+        consumer.Subscribe(topic);
+
+        var deadline = DateTime.UtcNow + timeout;
+
+        try
+        {
+            while (DateTime.UtcNow < deadline)
+            {
+                var remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero) break;
+
+                var result = consumer.Consume(TimeSpan.FromMilliseconds(
+                    Math.Min(remaining.TotalMilliseconds, 500)));
+
+                if (result?.Message?.Value is not null && predicate(result.Message.Value))
+                    return true;
+
+                // Yield to allow other work
+                await Task.Yield();
+            }
+        }
+        finally
+        {
+            consumer.Close();
+        }
+
+        return false;
+    }
 
     public void Dispose()
     {
